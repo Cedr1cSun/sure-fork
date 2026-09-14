@@ -97,6 +97,12 @@ sample positive only when `detected` is true and its score reaches the scanned
 threshold; complete WekWS-style DET/FAR requires threshold-independent
 candidate scores from the model wrapper.
 
+For spoken language identification, declare `task: LID` and expose the model's
+language result as `language` or `label`. `/sure_infer` normalizes that result
+to the label projection consumed by `sure-evaluation` route
+`lid.any.accuracy.lid_label_canonical_v1.classify_v1`; see the
+[LID onboarding playbook](./sure/skills/sure_onboard/references/task_playbooks/LID.md).
+
 The two approval calls are intentionally separate: the first creates an immutable candidate and review packet; the second requires an explicit human decision and publishes the verified package. This path currently requires the `uv` backend and a hash-locked requirements file. SURE materializes a content-addressed Model Runtime below the configured `storage.runtime_root`, seals its portable manifest into the approved model bundle, and verifies the runtime plus model-core hashes before inference. A model-local `.venv` or arbitrary host Python is never accepted as an Eval runtime. Omitting `package` keeps the Docker registry default.
 
 ## Site Configuration
