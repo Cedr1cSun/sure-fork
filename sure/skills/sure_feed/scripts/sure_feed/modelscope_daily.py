@@ -40,6 +40,14 @@ TASK_KEYWORDS = {
         "speech-emotion-recognition",
     ),
     "classification": ("audio classification", "speech classification", "audio-classification"),
+    "lid": (
+        "lid",
+        "language identification",
+        "language-identification",
+        "spoken language identification",
+        "spoken-language-identification",
+        "fireredlid",
+    ),
     "kws": ("keyword spotting", "keyword-spotting", "wake word", "wake-word"),
     "sa_asr": ("speaker attributed asr", "speaker-attributed-asr", "speaker aware asr"),
     "sd": ("speaker diarization", "speaker-diarization", "diarization"),
@@ -117,6 +125,18 @@ MODELSCOPE_TASK_FILTERS = {
             "api_params": {"search": "speaker-emotion-recognition", "sort": "last_modified"},
             "ui_params": {"Tags": "speaker-emotion-recognition", "dataType": "audio"},
             "fallback_searches": ("ser", "speech emotion", "speaker emotion"),
+        },
+    },
+    "lid": {
+        "model": {
+            "api_params": {"search": "language-identification", "sort": "last_modified"},
+            "ui_params": {"tabKey": "task", "tasks": "language-identification", "type": "audio"},
+            "fallback_searches": ("lid", "spoken language identification", "fireredlid"),
+        },
+        "dataset": {
+            "api_params": {"search": "language-identification", "sort": "last_modified"},
+            "ui_params": {"Tags": "language-identification", "dataType": "audio"},
+            "fallback_searches": ("lid", "spoken language identification"),
         },
     },
 }
