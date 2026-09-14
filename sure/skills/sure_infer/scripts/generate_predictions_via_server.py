@@ -773,9 +773,22 @@ def _normalize_prediction_payload(payload: Any, *, task: str) -> tuple[str, dict
                 if prediction.get(key) is not None:
                     normalized[key] = prediction[key]
             return str(value), normalized
-        if task_name in {"CLASSIFICATION", "SER", "GR"}:
-            value = prediction.get("label") or payload.get("label") or payload.get("text") or ""
-            return str(value), {"label": str(value)}
+        if task_name in {"CLASSIFICATION", "LID", "SER", "GR"}:
+            value = (
+                prediction.get("label")
+                or prediction.get("language")
+                or prediction.get("lang")
+                or payload.get("label")
+                or payload.get("language")
+                or payload.get("lang")
+                or prediction.get("text")
+                or payload.get("text")
+                or ""
+            )
+            normalized = {"label": str(value)}
+            if task_name == "LID":
+                normalized["language"] = str(value)
+            return str(value), normalized
         if task_name == "SLU":
             value = prediction.get("text") or prediction.get("label") or payload.get("text") or payload.get("label") or ""
             normalized = {"answer": str(value), "text": str(value)}
@@ -852,8 +865,11 @@ def _normalize_prediction_payload(payload: Any, *, task: str) -> tuple[str, dict
         elif task_name == "TSE":
             normalized["prediction_audio"] = value
         return value, normalized
-    if task_name in {"CLASSIFICATION", "SER", "GR"}:
-        return value, {"label": value}
+    if task_name in {"CLASSIFICATION", "LID", "SER", "GR"}:
+        normalized = {"label": value}
+        if task_name == "LID":
+            normalized["language"] = value
+        return value, normalized
     if task_name in {"SD", "SA-ASR", "SA_ASR"}:
         return value, {"annotation": value}
     if task_name == "KWS":

@@ -45,6 +45,7 @@ TEXT_DEFAULT_METRICS = {
     "SD": "der",
     "SA-ASR": "cpwer",
     "KWS": "accuracy",
+    "LID": "accuracy",
     "SER": "accuracy",
     "GR": "accuracy",
     "SLU": "accuracy",
