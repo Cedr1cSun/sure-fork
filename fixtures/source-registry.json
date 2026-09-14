@@ -40,6 +40,16 @@
 			"license_url": "https://www.openslr.org/resources/12/LICENSE.TXT",
 			"source_url": "https://www.openslr.org/12",
 			"citation_url": "https://www.danielpovey.com/files/2015_icassp_librispeech.pdf"
+		},
+		"aishell1": {
+			"repository": "OpenSLR SLR33",
+			"revision": "AISHELL-1 corpus release",
+			"configuration": "AISHELL-1",
+			"split": "test",
+			"license": "Apache-2.0",
+			"license_url": "https://www.openslr.org/33/",
+			"source_url": "https://www.openslr.org/33/",
+			"citation_url": "https://www.isca-archive.org/iscslp_2017/bu17_iscslp.html"
 		}
 	}
 }

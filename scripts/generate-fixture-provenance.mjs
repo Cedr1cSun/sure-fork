@@ -12,6 +12,7 @@ let stale = false;
 const taskSources = {
 	asr: "librispeech",
 	classification: "librispeech",
+	lid: ["librispeech", "aishell1"],
 	gr: "librispeech",
 	kws: "librispeech",
 	s2tt: "covost2",
@@ -104,6 +105,7 @@ for (const [task, profile] of Object.entries(profiles.tasks)) {
 				sha256: hash(path),
 				transform_id: transform?.id ?? "source_media_copy",
 			};
+			if (task === "lid") entry.source_id = name === "sample_zh.wav" ? "aishell1" : "librispeech";
 			if (transform?.inputs) entry.source_sha256 = transform.inputs.map((input) => hash(join(fixtureRoot, input)));
 			else if (transform?.source_sha256) entry.source_sha256 = transform.source_sha256;
 			else entry.source_sha256 = entry.sha256;
@@ -120,13 +122,21 @@ for (const [task, profile] of Object.entries(profiles.tasks)) {
 		task: row.task ?? task,
 		label: row.label ?? row.ground_truth ?? row.reference_text ?? row.text ?? row.segments ?? row.speech_segments,
 	}));
-	const sourceId = taskSources[task];
+	const sourceSpec = taskSources[task];
+	const sourceIds = Array.isArray(sourceSpec) ? sourceSpec : [sourceSpec];
+	const sourceId = sourceIds[0];
 	const payload = {
 		schema: "sure.fixture_provenance.v2",
 		task,
 		dataset: {
 			...sourceRegistry.sources[sourceId],
-			source_id: sourceId,
+			source_id: sourceIds.length === 1 ? sourceId : "composite",
+			...(sourceIds.length > 1
+				? {
+					composition: "mixed-source fixture; source_id is recorded per file",
+					source_datasets: sourceIds.map((id) => ({ ...sourceRegistry.sources[id], source_id: id })),
+				}
+				: {}),
 			metadata_sha256: canonicalHash(metadata),
 			metadata_hash_basis: "canonical selected key/task/annotation projection",
 		},

@@ -23,6 +23,14 @@
 			"tool_name": "classify_audio",
 			"io_contract": { "input_type": "audio_path", "primary_field": "label" }
 		},
+		"lid": {
+			"engine_task": "lid",
+			"default_language": "any",
+			"fixture_root": "fixtures/tasks/lid/firered_lid_smoke",
+			"evaluation_bridge": "text_pair",
+			"tool_name": "identify_language",
+			"io_contract": { "input_type": "audio_path", "primary_field": "label" }
+		},
 		"gr": {
 			"engine_task": "classification",
 			"default_language": "any",

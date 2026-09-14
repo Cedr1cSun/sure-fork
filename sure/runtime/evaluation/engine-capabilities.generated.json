@@ -6,7 +6,7 @@
     "speech_enhancement": "se"
   },
   "engine": {
-    "commit": "b28ad34d048895a469acd87e5f44741d0ede8d10",
+    "commit": "db54d63350530d72d3acb83b560b8789ec896c2c",
     "path": "sure/external/sure-evaluation"
   },
   "schema": "sure.engine_capabilities.v1",
@@ -17,6 +17,7 @@
         "classification",
         "gr",
         "kws",
+        "lid",
         "s2tt",
         "sa_asr",
         "sd",
@@ -476,6 +477,48 @@
         }
       ],
       "tool_name": "detect_keyword"
+    },
+    "lid": {
+      "default_language": "any",
+      "engine_task": "lid",
+      "evaluation_bridge": "text_pair",
+      "fixture_root": "fixtures/tasks/lid/firered_lid_smoke",
+      "io_contract": {
+        "input_type": "audio_path",
+        "primary_field": "label"
+      },
+      "language_sensitive": false,
+      "metrics": [
+        "accuracy"
+      ],
+      "readiness_requirements": {
+        "engine_routes": true,
+        "evaluation_bridge": true,
+        "fixture_ground_truth": true,
+        "fixture_index": true,
+        "fixture_provenance": true,
+        "io_contract": true,
+        "tool_name": true
+      },
+      "ready": true,
+      "required_roles": [
+        "hyp",
+        "ref"
+      ],
+      "routes": [
+        {
+          "input_contract": "task/lid_key_labels",
+          "language": "any",
+          "metric": "accuracy",
+          "optional_roles": [],
+          "pipeline_id": "lid.any.accuracy.lid_label_canonical_v1.classify_v1",
+          "required_roles": [
+            "hyp",
+            "ref"
+          ]
+        }
+      ],
+      "tool_name": "identify_language"
     },
     "s2tt": {
       "default_language": "en",
@@ -1357,7 +1400,7 @@
           "language": "any",
           "metric": "f1",
           "optional_roles": [],
-          "pipeline_id": "vad.any.f1.vad_contract_v1.vad_timebase_strict_v1.vad_detection_duration_v1",
+          "pipeline_id": "vad.any.f1.vad_timebase_strict_v2.vad_detection_duration_v1",
           "required_roles": [
             "reference_jsonl",
             "sample_output"
@@ -1368,7 +1411,7 @@
           "language": "any",
           "metric": "p_fa",
           "optional_roles": [],
-          "pipeline_id": "vad.any.p_fa.vad_contract_v1.vad_timebase_strict_v1.vad_detection_duration_v1",
+          "pipeline_id": "vad.any.p_fa.vad_timebase_strict_v2.vad_detection_duration_v1",
           "required_roles": [
             "reference_jsonl",
             "sample_output"
@@ -1379,7 +1422,7 @@
           "language": "any",
           "metric": "p_miss",
           "optional_roles": [],
-          "pipeline_id": "vad.any.p_miss.vad_contract_v1.vad_timebase_strict_v1.vad_detection_duration_v1",
+          "pipeline_id": "vad.any.p_miss.vad_timebase_strict_v2.vad_detection_duration_v1",
           "required_roles": [
             "reference_jsonl",
             "sample_output"
@@ -1390,7 +1433,7 @@
           "language": "any",
           "metric": "dcf_nist",
           "optional_roles": [],
-          "pipeline_id": "vad.any.dcf_nist.vad_contract_v1.vad_timebase_strict_v1.vad_detection_duration_v1",
+          "pipeline_id": "vad.any.dcf_nist.vad_timebase_strict_v2.vad_detection_duration_v1",
           "required_roles": [
             "reference_jsonl",
             "sample_output"
@@ -1401,7 +1444,7 @@
           "language": "any",
           "metric": "auc_roc",
           "optional_roles": [],
-          "pipeline_id": "vad.any.auc_roc.vad_contract_v1.vad_timebase_strict_v1.vad_auc_roc_v1",
+          "pipeline_id": "vad.any.auc_roc.vad_timebase_strict_v2.vad_auc_roc_v1",
           "required_roles": [
             "reference_jsonl",
             "sample_output"
