@@ -21,6 +21,7 @@ import resolve_eval_input  # noqa: E402
 from sure_eval.datasets import source_resolver  # noqa: E402
 from test_source_conversion import (  # noqa: E402
     make_flat_source_tree,
+    make_lid_source_tree,
     make_manager,
     make_source_tree,
     make_vad_source_tree,
@@ -236,6 +237,15 @@ class DatasetDetailsSourceTests(unittest.TestCase):
         self.assertEqual(detail["task"], "VAD")
         self.assertEqual(detail["language"], "zh")
         self.assertEqual(detail["default_metrics"], ["f1"])
+
+    def test_unconverted_lid_source_entry_yields_accuracy_detail(self) -> None:
+        lid_root = make_lid_source_tree(self.source_root, "lid_ds", "v1.0.0")
+        details = resolve_eval_input._dataset_details(self.manager, [str(lid_root)], [], None)
+        self.assertEqual(len(details), 1)
+        detail = details[0]
+        self.assertEqual(detail["name"], "lid_ds__v1.0.0")
+        self.assertEqual(detail["task"], "LID")
+        self.assertEqual(detail["default_metrics"], ["accuracy"])
 
 
 class MainErrorHandlingTests(unittest.TestCase):

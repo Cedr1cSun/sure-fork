@@ -24,6 +24,12 @@ CHECKS: dict[str, list[str]] = {
         "asr_metric_bypass.md",
         "sample_output.json",
     ],
+    "task_playbooks/LID.md": [
+        "FireRedTeam/FireRedLID",
+        "identify_language",
+        "lid.any.accuracy.lid_label_canonical_v1.classify_v1",
+        "key<TAB>label",
+    ],
     "task_playbooks/KWS.md": [
         "run_kws_metric_pipeline.py",
         "false_alarm_per_hour",
@@ -32,7 +38,7 @@ CHECKS: dict[str, list[str]] = {
         "wekws_frame_score",
     ],
     "task_playbooks/SPEECH_UNDERSTANDING.md": [
-        "SD, SA-ASR",
+        "SD/SA-ASR",
         "speech_understanding_metric_report.json",
         "sa_asr__cpwer",
         "prompt_norm",
@@ -76,7 +82,7 @@ CHECKS: dict[str, list[str]] = {
     ],
     "experience_loss_register.md": [
         "P0 Restores",
-        "Not Restored As Default Gate",
+        "Docker/registry delivery remains the default",
     ],
 }
 

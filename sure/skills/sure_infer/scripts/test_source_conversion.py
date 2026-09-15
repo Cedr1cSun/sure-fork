@@ -138,6 +138,34 @@ def make_vad_source_tree(root: Path, name: str, version: str) -> Path:
     return dataset_root
 
 
+def make_lid_source_tree(root: Path, name: str, version: str) -> Path:
+    dataset_root = root / "g001" / "store002" / "ds_pool" / name
+    version_dir = dataset_root / "sample_files" / version
+    version_dir.mkdir(parents=True)
+    raw_dir = dataset_root / "raws" / "sample"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    audio = raw_dir / "utt1.wav"
+    audio.write_bytes(b"RIFFxxxx")
+    (version_dir / "sample.jsonl").write_text(
+        json.dumps(
+            {
+                "sample_id": "utt1",
+                "task": "LID",
+                "language": "en",
+                "attribute": {
+                    "path": "utt1.wav",
+                    "size": audio.stat().st_size,
+                    "sample_rate": 16000,
+                    "duration": 1000,
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return dataset_root
+
+
 class SourceConversionTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -253,6 +281,22 @@ class SourceConversionTests(unittest.TestCase):
             (self.manager.sure_dir / "vad_ds" / "dataset_manifest.json").read_text(encoding="utf-8")
         )
         self.assertEqual(manifest["default_projection"], "vad_segments_v1")
+
+    def test_converts_lid_language_labels_to_label_projection(self) -> None:
+        lid_root = make_lid_source_tree(self.source_root, "lid_ds", "v1.0.0")
+        ref = source_resolver.resolve_site_source_entry(str(lid_root))
+        self.assertEqual(source_resolver.read_source_task(ref), "LID")
+        jsonl_path = self.manager._convert_source_root_to_jsonl(ref)
+        row = json.loads(jsonl_path.read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(row["task"], "LID")
+        self.assertEqual(row["label"], "en")
+        self.assertEqual(row["target"], "en")
+        contract = json.loads(
+            (self.manager.sure_dir / "lid_ds" / "projections" / "lid_labels_v1" / "io_contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(contract["reference"]["primary_field"], "label")
 
     def test_rebuilds_stale_asr_projection_for_vad_source(self) -> None:
         vad_root = make_vad_source_tree(self.source_root, "vad_ds", "v0.0.1")

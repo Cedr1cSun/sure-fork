@@ -4,8 +4,8 @@
   "materialization_version": 4,
   "python": "3.11",
   "dynamic_loader": "/lib64/ld-linux-x86-64.so.2",
-  "engine_commit": "b28ad34d048895a469acd87e5f44741d0ede8d10",
-  "engine_pyproject_sha256": "623ffb07b28a5df6bd104e8253792419959582b52838f78e6f3414364ede953d",
+  "engine_commit": "db54d63350530d72d3acb83b560b8789ec896c2c",
+  "engine_pyproject_sha256": "32e2ec98c3c972f19c38bf19d2e94e798f29cd1e4ca8fcdf110d17ba5e96a37e",
   "lock_file": "requirements.lock.txt",
   "required_imports": [
     "regex",
@@ -16,7 +16,8 @@
     "rich",
     "structlog",
     "typer",
-    "sure_eval.evaluation.tasks.asr.pipeline"
+    "sure_eval.evaluation.tasks.asr.pipeline",
+    "sure_eval.evaluation.tasks.lid.pipeline"
   ],
   "max_prepare_attempts": 2
 }
