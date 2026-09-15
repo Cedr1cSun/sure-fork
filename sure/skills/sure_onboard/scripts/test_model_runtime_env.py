@@ -8,6 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "runtime" / "harness"))
 from model_child_env import model_child_env
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from run_validate import env_for
 
 
 class ModelRuntimeEnvTests(unittest.TestCase):
@@ -37,6 +39,20 @@ class ModelRuntimeEnvTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout.strip(), "ok")
+
+    def test_validation_artifact_cannot_reintroduce_harness_interpreter_state(self) -> None:
+        environment = env_for(
+            {
+                "env": {
+                    "PYTHONHOME": "/invalid/harness",
+                    "PYTHONPATH": "/invalid/harness/site-packages:/opt/model-runtime",
+                    "MODEL_FLAG": "enabled",
+                }
+            }
+        )
+        self.assertNotIn("PYTHONHOME", environment)
+        self.assertNotIn("PYTHONPATH", environment)
+        self.assertEqual(environment["MODEL_FLAG"], "enabled")
 
 
 if __name__ == "__main__":

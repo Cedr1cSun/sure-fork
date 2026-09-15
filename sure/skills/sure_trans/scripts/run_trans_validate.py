@@ -13,6 +13,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT / "sure" / "runtime" / "harness"))
+
 from vc_exec import (
     DEFAULT_CPUS,
     DEFAULT_GPUS,
@@ -25,6 +28,7 @@ from vc_exec import (
     registry_image,
     run_vc_job,
 )
+from model_child_env import model_child_env
 
 GIB = 1024 ** 3
 RAM_SAFETY_FACTOR = 2
@@ -442,6 +446,7 @@ def run_vc_validation(
     for key, value in (data.get("env") or {}).items():
         if isinstance(key, str) and isinstance(value, (str, int, float, bool)):
             env[key] = str(value)
+    env = model_child_env(env)
     env["SURE_DEVICE"] = "cuda"
     env["DEVICE"] = "cuda"
     partition, gpus, memory_gb, cpus = vc_resources(resolved)
@@ -551,7 +556,7 @@ def main() -> int:
             raise ValueError(
                 f"Python validation must use the resolved python_executable: {expected_python}"
             )
-    env = os.environ.copy()
+    env = model_child_env(os.environ)
     selected_device = str(compat.get("selected_device") or "")
     execution_surface = (
         "local_python"

@@ -152,7 +152,7 @@ This helper copies already-created run artifacts into `sure/models/<model_name>/
 
 Historical model migration is an administrator-only metadata operation. It is not a `/sure_onboard` helper and cannot synthesize passing validation, packaging, or verdict evidence from an old local environment.
 
-Isolation rule: `sure/models/<model_name>/` itself must be a real harness-owned directory. Do not leave it as a symlink to the original SURE-EVAL workspace. Only large immutable assets under subdirectories such as `checkpoints/`, `.runtime/modelscope_cache/`, `.runtime/huggingface/`, or `.runtime/vocoder/` may be symlinked, and those links must be recorded in `weights_manifest.json`.
+Isolation rule: `sure/models/<model_name>/` and its `artifacts/` directory must be real harness-owned directories. Do not leave either as a symlink to the original SURE-EVAL workspace. Large immutable asset files under subdirectories such as `checkpoints/`, `.runtime/modelscope_cache/`, `.runtime/huggingface/`, or `.runtime/vocoder/` may be symlinked, and those file-level links must be recorded in `weights_manifest.json`; directory-level symlinks are rejected during finalization and approval.
 
 ## State Machine
 

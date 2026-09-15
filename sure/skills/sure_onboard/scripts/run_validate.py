@@ -100,7 +100,9 @@ def env_for(data: dict, validation_device: str | None = None) -> dict[str, str]:
         for key, value in raw_env.items():
             if isinstance(key, str) and isinstance(value, (str, int, float, bool)):
                 env[key] = str(value)
-    return env
+    # Artifact-declared variables may include model import paths, but they must
+    # not be able to reintroduce Harness interpreter state after sanitization.
+    return model_child_env(env)
 
 
 def maybe_use_model_local_python(command: list[str] | str, *, shell: bool, cwd: Path) -> list[str] | str:

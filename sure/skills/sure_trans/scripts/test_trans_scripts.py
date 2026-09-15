@@ -1622,6 +1622,42 @@ class TransScriptsTest(unittest.TestCase):
             self.assertTrue(payload["import_passed"])
             self.assertEqual(payload["status"], "passed")
 
+    def test_validation_runner_strips_harness_python_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary)
+            artifacts = run_dir / "artifacts"
+            artifacts.mkdir(parents=True)
+            (artifacts / "execution_compat.json").write_text(
+                json.dumps({"status": "ready", "compat_ok": True, "selected_device": "cpu"}) + "\n",
+                encoding="utf-8",
+            )
+            result = artifacts / "import_result.json"
+            result.write_text(
+                json.dumps({"status": "pending", "run_command": [sys.executable, "-c", "pass"]}) + "\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.CompletedProcess([sys.executable], 0, "", "")
+            with mock.patch.dict(
+                os.environ,
+                {"PYTHONHOME": "/invalid/harness", "PYTHONPATH": "/invalid/harness/site-packages"},
+                clear=False,
+            ):
+                with mock.patch.object(run_trans_validate.subprocess, "run", return_value=completed) as runner:
+                    argv = [
+                        "run_trans_validate.py",
+                        "--run-dir",
+                        str(run_dir),
+                        "--produces",
+                        str(result),
+                        "--kind",
+                        "import",
+                    ]
+                    with mock.patch.object(sys, "argv", argv):
+                        self.assertEqual(run_trans_validate.main(), 0)
+            child_env = runner.call_args.kwargs["env"]
+            self.assertNotIn("PYTHONHOME", child_env)
+            self.assertNotIn("PYTHONPATH", child_env)
+
     def test_gate_error_carries_the_reason_the_container_recorded(self) -> None:
         """A failed stage leaves its reason in a file, never on stdout.
 

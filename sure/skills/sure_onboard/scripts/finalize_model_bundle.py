@@ -68,6 +68,19 @@ def ensure_safe_bundle_targets(model_dir: Path, resolved: dict[str, Any]) -> Non
     artifacts.mkdir(parents=True, exist_ok=True)
     if not artifacts.is_dir() or not artifacts.resolve().is_relative_to(model_dir.resolve()):
         raise ValueError("model artifacts directory escapes the model bundle")
+    pending = [model_dir]
+    while pending:
+        directory = pending.pop()
+        for child in directory.iterdir():
+            if child.is_symlink():
+                if child.resolve().is_dir():
+                    raise ValueError(
+                        f"directory symlink is not publishable: {child}; "
+                        "materialize the directory or use file-level symlinks"
+                    )
+                continue
+            if child.is_dir():
+                pending.append(child)
     for name in (
         *CORE_TERMINAL_ARTIFACTS,
         MODEL_RUNTIME_ARTIFACT,

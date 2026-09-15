@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from bootstrap import ModelRuntimeError, materialize_runtime, runtime_python_relative, verify_runtime
+from bootstrap import ModelRuntimeError, _probe, materialize_runtime, runtime_python_relative, verify_runtime
 
 
 class ModelRuntimeBootstrapTests(unittest.TestCase):
@@ -40,6 +42,19 @@ class ModelRuntimeBootstrapTests(unittest.TestCase):
     def test_runtime_python_path_matches_host_platform(self) -> None:
         expected = "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
         self.assertEqual(runtime_python_relative(), expected)
+
+    def test_model_python_probe_ignores_harness_interpreter_overrides(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PYTHONHOME": "/invalid/harness",
+                "PYTHONPATH": "/invalid/harness/site-packages",
+                "PYTHONEXECUTABLE": "/invalid/harness/bin/python",
+            },
+            clear=False,
+        ):
+            probe = _probe(Path(sys.executable))
+        self.assertEqual(probe["base_python"], str(Path(sys.executable).resolve()))
 
     def test_rejects_tampered_package_inventory(self) -> None:
         contract = materialize_runtime(
