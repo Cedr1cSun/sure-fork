@@ -77,6 +77,8 @@ def canonical_task(task: str) -> str:
         "speaker-verification": "sv",
         "target-speaker-extraction": "tse",
         "voice-activity-detection": "vad",
+        "language-identification": "lid",
+        "spoken-language-identification": "lid",
     }
     mapped = aliases.get(value, value)
     try:
@@ -121,6 +123,14 @@ TASK_KEYWORDS: dict[str, tuple[str, ...]] = {
     "vc": ("voice conversion", "voice-conversion", "timbre conversion", "speech conversion"),
     "kws": ("kws", "keyword spotting", "wake word", "wake-word"),
     "classification": ("audio classification", "speech classification", "audio-classification"),
+    "lid": (
+        "lid",
+        "language identification",
+        "language-identification",
+        "spoken language identification",
+        "spoken-language-identification",
+        "fireredlid",
+    ),
     "se": ("speech enhancement", "speech-enhancement", "denoising", "noise suppression"),
     "sv": ("speaker verification", "speaker-verification", "speaker embedding"),
     "tse": ("target speaker extraction", "target-speaker-extraction", "speaker extraction"),
@@ -221,6 +231,15 @@ def _candidate_haystack(candidate: dict[str, Any]) -> dict[str, str]:
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     lowered = text.lower()
     return any(term in lowered for term in terms)
+
+
+def _keyword_matches(text: str, keyword: str) -> bool:
+    """Match short task abbreviations as tokens, not arbitrary substrings."""
+    lowered = str(text).lower()
+    normalized = str(keyword).lower()
+    if len(normalized) <= 3 and normalized.isalnum():
+        return re.search(rf"(?<![a-z0-9]){re.escape(normalized)}(?![a-z0-9])", lowered) is not None
+    return normalized in lowered
 
 
 def _narrow_task_from_research(
@@ -333,7 +352,9 @@ def infer_task(candidate: dict[str, Any], requested_task: str) -> tuple[bool, st
         if target == "auto" and canonical != "auto":
             ev.append(evidence(source, "tasks", task_value, "strong", url))
             return True, canonical, 0.9, ev, "tasks"
-        if canonical_task(text) == target or any(keyword in text for keyword in TASK_KEYWORDS.get(target, ())):
+        if canonical_task(text) == target or any(
+            _keyword_matches(text, keyword) for keyword in TASK_KEYWORDS.get(target, ())
+        ):
             ev.append(evidence(source, "tasks", task_value, "strong", url))
             return True, target, 0.9, ev, "tasks"
 
@@ -343,7 +364,7 @@ def infer_task(candidate: dict[str, Any], requested_task: str) -> tuple[bool, st
             for field, value in haystack_fields.items():
                 lowered = value.lower()
                 for keyword in keywords:
-                    if keyword.lower() in lowered:
+                    if _keyword_matches(lowered, keyword):
                         strength = "medium" if field == "tags" else "weak"
                         ev.append(evidence(source, field, keyword, strength, url))
                         return True, task_name, 0.72 if strength == "medium" else 0.55, ev, field
@@ -353,7 +374,7 @@ def infer_task(candidate: dict[str, Any], requested_task: str) -> tuple[bool, st
     for field, value in haystack_fields.items():
         lowered = value.lower()
         for keyword in keywords:
-            if keyword.lower() in lowered:
+            if _keyword_matches(lowered, keyword):
                 strength = "medium" if field == "tags" else "weak"
                 ev.append(evidence(source, field, keyword, strength, url))
                 return True, target, 0.72 if strength == "medium" else 0.55, ev, field

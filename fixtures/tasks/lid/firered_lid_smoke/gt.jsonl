@@ -1,0 +1,2 @@
+{"key":"lid_en","task":"LID","language":"en","dataset":"librispeech_test_clean_lid","audio":"sample_en.wav","label":"en","ground_truth":"en"}
+{"key":"lid_zh","task":"LID","language":"zh","dataset":"librispeech_test_clean_lid","audio":"sample_zh.wav","label":"zh-mandarin","ground_truth":"zh-mandarin"}

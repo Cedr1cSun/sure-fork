@@ -485,6 +485,35 @@ class DatasetManager:
                 return text.strip()
         return ""
 
+    def _extract_oref_language_label(self, record: dict[str, Any]) -> str:
+        """Read a spoken-language label from common OREF annotation shapes."""
+        candidates: list[Any] = [
+            record.get("language"),
+            record.get("lang"),
+            record.get("label"),
+            record.get("expected_language"),
+            record.get("ground_truth"),
+        ]
+        annotations = record.get("annotation") or []
+        if isinstance(annotations, list):
+            for annotation in annotations:
+                if not isinstance(annotation, dict):
+                    continue
+                candidates.extend(
+                    annotation.get(field)
+                    for field in ("language", "lang", "label", "expected_language", "ground_truth")
+                )
+                classification = annotation.get("classification")
+                if isinstance(classification, dict):
+                    candidates.extend(
+                        classification.get(field)
+                        for field in ("language", "lang", "label", "value")
+                    )
+        for value in candidates:
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ""
+
     def _extract_oref_speech_segments(
         self, record: dict[str, Any]
     ) -> tuple[list[dict[str, float]], str | None]:
@@ -577,7 +606,11 @@ class DatasetManager:
                         skipped.append({"line": line_no, "reason": segment_error})
                         continue
                 else:
-                    text = self._extract_oref_transcription_text(record)
+                    text = (
+                        self._extract_oref_language_label(record)
+                        if task == "LID"
+                        else self._extract_oref_transcription_text(record)
+                    )
                     if not text:
                         skipped.append({"line": line_no, "reason": "missing transcription text"})
                         continue
@@ -618,6 +651,9 @@ class DatasetManager:
                         continue
                     row["duration"] = duration
                     row["speech_segments"] = speech_segments or []
+                elif task == "LID":
+                    row["label"] = text
+                    row["target"] = text
                 else:
                     row["target"] = text
                 rows.append(row)
@@ -681,9 +717,9 @@ class DatasetManager:
         if not raw_dir.exists():
             raise FileNotFoundError(f"source raw_dir not found: {raw_dir}")
         task = source_task or "ASR"
-        if task not in {"ASR", "KWS", "VAD"}:
+        if task not in {"ASR", "KWS", "LID", "VAD"}:
             raise ValueError(
-                f"source-root projection for task {task!r} is not implemented; supported tasks: ASR, KWS, VAD"
+                f"source-root projection for task {task!r} is not implemented; supported tasks: ASR, KWS, LID, VAD"
             )
         ds_meta = self._load_single_json_object(ds_jsonl_path)
         language = str(
@@ -692,7 +728,15 @@ class DatasetManager:
         if task == "KWS" and language == "auto":
             language = "any"
         package_dir = self.sure_dir / ref.source_dataset_name
-        projection_name = "kws_wakeword_v1" if task == "KWS" else ("vad_segments_v1" if task == "VAD" else "asr_transcription_v1")
+        projection_name = (
+            "kws_wakeword_v1"
+            if task == "KWS"
+            else "vad_segments_v1"
+            if task == "VAD"
+            else "lid_labels_v1"
+            if task == "LID"
+            else "asr_transcription_v1"
+        )
         projection_dir = package_dir / "projections" / projection_name
         projection_dir.mkdir(parents=True, exist_ok=True)
 
@@ -783,6 +827,13 @@ class DatasetManager:
                         "speech_segments": "annotation[].timestamp.{begin_time,end_time}",
                     }
                 )
+            elif task == "LID":
+                fields.update(
+                    {
+                        "label": "record.language|record.lang|record.label|annotation[].language|annotation[].label",
+                        "duration_ms": "attribute.duration",
+                    }
+                )
             else:
                 fields.update(
                     {
@@ -804,8 +855,8 @@ class DatasetManager:
             mapping_text = json.dumps(mapping, indent=2, ensure_ascii=False) + "\n"
         (projection_dir / "mapping.yaml").write_text(mapping_text, encoding="utf-8")
 
-        io_contract = (
-            {
+        if task == "KWS":
+            io_contract = {
                 "task": "KWS",
                 "input": {
                     "primary_field": "path",
@@ -822,8 +873,15 @@ class DatasetManager:
                     "type": "keyword_detection",
                 },
             }
-            if task == "KWS"
-            else {
+        elif task == "LID":
+            io_contract = {
+                "task": "LID",
+                "input": {"primary_field": "path", "type": "audio_path", "required_fields": ["key", "path"]},
+                "output": {"prediction_format": "tsv", "columns": ["key", "label"], "type": "language_label"},
+                "reference": {"primary_field": "label", "type": "language_label"},
+            }
+        else:
+            io_contract = {
                 "task": task,
                 "input": {"primary_field": "path", "type": "audio_path", "required_fields": ["key", "path"]},
                 "output": (
@@ -837,7 +895,6 @@ class DatasetManager:
                     else {"primary_field": "target", "type": "text"}
                 ),
             }
-        )
         (projection_dir / "io_contract.json").write_text(
             json.dumps(io_contract, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",

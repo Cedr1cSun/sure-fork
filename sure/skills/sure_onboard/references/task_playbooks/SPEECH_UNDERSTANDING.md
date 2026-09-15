@@ -4,7 +4,7 @@
 `asr_kimi_audio` / Kimi-Audio-7B-Instruct 的接入经验。适用任务：
 
 ```text
-ASR, Classification, GR, KWS, S2TT, SA-ASR, SD, SE, SER, SLU, SV, TSE, TTS, VAD, VC
+ASR, Classification, LID, GR, KWS, S2TT, SA-ASR, SD, SE, SER, SLU, SV, TSE, TTS, VAD, VC
 ```
 
 这类模型不是单一 ASR wrapper，而是统一音频理解模型。新 agent 接入同类模型时，
@@ -26,6 +26,7 @@ ASR 文本转写。
 | SER | speaker emotion recognition | `recognize_emotion(audio_path)` | `text`, normalized `label` |
 | SLU | spoken language understanding | `understand(audio_path, prompt=...)` | `text`, normalized choice `label` |
 | GR | gender recognition | `recognize_gender(audio_path)` | `text`, normalized `label` |
+| LID | spoken language identification | `identify_language(audio_path)` | `language`, normalized `label` |
 | SD | speaker diarization | `diarize(audio_path)` | MeetEval-loadable annotation |
 | SA-ASR | speaker-attributed ASR | `transcribe_with_speakers(audio_path)` | MeetEval-loadable annotation |
 
@@ -48,11 +49,27 @@ io_contract:
     GR:
       text: string
       label: "one of [male, female]"
+    LID:
+      language: string
+      label: "canonical language or dialect label"
     SD:
       segments: list
     SA-ASR:
       segments: list
 ```
+
+FireRedLID 接入要点：
+
+- ModelScope 模型为 `FireRedTeam/FireRedLID`，上游实现位于
+  `FireRedTeam/FireRedASR2S` 的 `fireredasr2s/fireredlid` 目录。
+- wrapper 输入为本地 16 kHz、单声道 PCM WAV；输出至少包含
+  `{"language": "<code>", "label": "<code>"}`，不要把语言代码写进 ASR 的
+  `text` 字段。
+- 依赖安装优先使用中国大陆镜像，例如
+  `python -m pip install -i https://mirrors.aliyun.com/pypi/simple ...`；模型权重仍由
+  ModelScope 下载并记录 revision/hash，不要提交到仓库。
+- 评测器不负责运行 FireRedLID。模型 wrapper 产出的 `key<TAB>label` 文件由
+  `sure-evaluation` 的 `lid.any.accuracy.lid_label_canonical_v1.classify_v1` 路由评分。
 
 ## 2. 目录与权重
 
@@ -99,6 +116,7 @@ Kimi-Audio 权重经验：
 fixtures/tasks/asr/qwen3_asr_smoke/
 fixtures/tasks/s2tt/kimi_audio_s2tt_smoke/
 fixtures/tasks/classification/librispeech_speaker_smoke/
+fixtures/tasks/lid/firered_lid_smoke/
 fixtures/tasks/gr/librispeech_gender_smoke/
 fixtures/tasks/kws/librispeech_keyword_smoke/
 fixtures/tasks/ser/crema_d_smoke/

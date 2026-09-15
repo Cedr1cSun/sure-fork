@@ -172,11 +172,23 @@ def _describe_evaluation_context(task: str, language: str, metric: str) -> dict[
                 "normalization": "sacrebleu_tokenizer_by_language",
             }
         )
-    elif task in {"SER", "GR", "SLU"}:
+    elif task in {"LID", "SER", "GR", "SLU"}:
         context.update(
             {
-                "postprocessing": "evaluation-pipeline process_prediction compatible" if task == "SLU" else f"SUREEvaluator.{task.lower()}_label_normalization",
-                "normalization": "prompt_option_restoration" if task == "SLU" else "label_normalization",
+                "postprocessing": (
+                    "evaluation-pipeline process_prediction compatible"
+                    if task == "SLU"
+                    else "sure_eval.evaluation.nodes.normalization.lid_label"
+                    if task == "LID"
+                    else f"SUREEvaluator.{task.lower()}_label_normalization"
+                ),
+                "normalization": (
+                    "prompt_option_restoration"
+                    if task == "SLU"
+                    else "canonical_lid_label_normalization"
+                    if task == "LID"
+                    else "label_normalization"
+                ),
             }
         )
     elif task == "SA-ASR":
@@ -199,7 +211,7 @@ def _metric_from_sota(
 
 def _legacy_default_metric(task: str, language: str) -> str:
     return (
-        "accuracy" if task in {"SER", "GR", "SLU"}
+        "accuracy" if task in {"LID", "SER", "GR", "SLU"}
         else "bleu" if task == "S2TT"
         else "der" if task == "SD"
         else "cpwer" if task == "SA-ASR"
@@ -1206,7 +1218,7 @@ def evaluate_prediction_file(
     language = all_samples[0].get("language", "auto")
     metric = metric_override or _legacy_metric(sota_manager, canonical_name, task, language)
 
-    ref_file = _write_eval_file([f"{sample.get('key', '')}\t{sample.get('target', '')}" for sample in samples])
+    ref_file = _write_eval_file([f"{sample.get('key', '')}\t{_sample_reference_text(sample)}" for sample in samples])
     hyp_file = _write_eval_file([f"{sample.get('key', '')}\t{predictions.get(sample.get('key', ''), '')}" for sample in samples])
 
     try:
@@ -1232,7 +1244,7 @@ def evaluate_prediction_file(
         score = details.get("bleu_char", details.get("bleu", details.get("score", 0.0)))
     elif task == "S2TT":
         score = details.get(metric, details.get("score", 0.0))
-    elif task in {"SER", "GR", "SLU"}:
+    elif task in {"LID", "SER", "GR", "SLU"}:
         score = details.get("accuracy", details.get("score", 0.0))
     elif task == "SD":
         score = details.get("der", details.get("score", 0.0))

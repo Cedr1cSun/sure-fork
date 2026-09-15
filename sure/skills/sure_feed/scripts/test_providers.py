@@ -305,7 +305,7 @@ pip install sherpa-onnx
         self.assertEqual(fixture["fixture_source"], "task_registry")
         self.assertEqual(fixture["fixture_index"], "fixtures/tasks/speech_understanding/README.md")
         self.assertEqual(fixture["selected_subtasks"], list(canonical_tasks()))
-        self.assertEqual(len(fixture["subtask_fixtures"]), 15)
+        self.assertEqual(len(fixture["subtask_fixtures"]), 16)
         self.assertEqual(set(fixture["subtask_io_contracts"]), set(canonical_tasks()))
         self.assertEqual(io_contract["primary_field"], "text")
 
@@ -401,6 +401,38 @@ pip install sherpa-onnx
         self.assertGreater(score, 0)
         self.assertEqual(match_source, "tags")
         self.assertEqual(evidence[0]["value"], "speech-recognition")
+
+    def test_language_identification_model_matches_lid(self) -> None:
+        matched, task_type, score, evidence, match_source = infer_task(
+            {
+                "source": "modelscope",
+                "model_id": "FireRedTeam/FireRedLID",
+                "repo": "https://modelscope.cn/models/FireRedTeam/FireRedLID",
+                "description": "A spoken language identification model.",
+            },
+            "lid",
+        )
+        self.assertTrue(matched)
+        self.assertEqual(task_type, "lid")
+        self.assertGreater(score, 0)
+        self.assertEqual(match_source, "description")
+        self.assertTrue(evidence)
+
+    def test_lid_abbreviation_does_not_match_inside_unrelated_words(self) -> None:
+        matched, task_type, score, evidence, match_source = infer_task(
+            {
+                "source": "modelscope",
+                "model_id": "owner/solid-audio-model",
+                "repo": "https://modelscope.cn/models/owner/solid-audio-model",
+                "description": "A valid uploaded audio model.",
+            },
+            "lid",
+        )
+        self.assertFalse(matched)
+        self.assertEqual(task_type, "lid")
+        self.assertEqual(score, 0.0)
+        self.assertEqual(evidence, [])
+        self.assertEqual(match_source, "")
 
     def test_broad_audio_text_pipeline_is_narrowed_to_sa_asr_by_research_evidence(self) -> None:
         matched, task_type, score, evidence, match_source = infer_task(

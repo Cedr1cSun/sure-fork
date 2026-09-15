@@ -122,6 +122,7 @@ pipeline_id=<id1>,<id2>
 | 任务 | 链路形态 |
 | --- | --- |
 | ASR 中文 CER | `normalization/wetext_norm -> scoring/wenet_cer` |
+| LID 语言识别 | `normalization/lid_label -> scoring/classify` |
 | KWS 唤醒 | `conversion/kws_sure_json_to_samples -> scoring/wekws_det` |
 | TTS/VC 中文 CER | `frontend/funasr_loader_16k_mono -> transcription/paraformer_zh -> normalization/punctuation_strip_norm -> scoring/wenet_cer` |
 | TTS 英文 WER | `transcription/whisper_large_v3 -> normalization/whisper_norm -> scoring/wenet_wer` |

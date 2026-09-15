@@ -23,6 +23,7 @@ all model directories.
 |------|---------------|------------------|
 | ASR | `asr/README.md` | `asr/qwen3_asr_smoke/asr_en/` |
 | Classification | `classification/README.md` | `classification/librispeech_speaker_smoke/` |
+| LID | `lid/README.md` | `lid/firered_lid_smoke/` |
 | GR | `gr/README.md` | `gr/librispeech_gender_smoke/` |
 | KWS | `kws/README.md` | `kws/librispeech_keyword_smoke/` |
 | S2TT | `s2tt/README.md` | `s2tt/kimi_audio_s2tt_smoke/covost2-en2zh/` |

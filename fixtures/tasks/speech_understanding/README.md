@@ -17,6 +17,7 @@ sure/models/<model>/fixture/
 |---------|---------------|--------------------|
 | ASR | `fixtures/tasks/asr/README.md` | `fixtures/tasks/asr/qwen3_asr_smoke/` |
 | Classification | `fixtures/tasks/classification/README.md` | `fixtures/tasks/classification/librispeech_speaker_smoke/` |
+| LID | `fixtures/tasks/lid/README.md` | `fixtures/tasks/lid/firered_lid_smoke/` |
 | GR | `fixtures/tasks/gr/README.md` | `fixtures/tasks/gr/librispeech_gender_smoke/` |
 | KWS | `fixtures/tasks/kws/README.md` | `fixtures/tasks/kws/librispeech_keyword_smoke/` |
 | S2TT | `fixtures/tasks/s2tt/README.md` | `fixtures/tasks/s2tt/kimi_audio_s2tt_smoke/` |
@@ -45,6 +46,7 @@ Task-formatted metric namespaces:
 src/sure_eval/evaluation/tasks/asr/
 src/sure_eval/evaluation/tasks/s2tt/
 src/sure_eval/evaluation/tasks/classification/
+src/sure_eval/evaluation/tasks/lid/
 src/sure_eval/evaluation/tasks/kws/
 src/sure_eval/evaluation/tasks/slu/
 src/sure_eval/evaluation/tasks/sd/

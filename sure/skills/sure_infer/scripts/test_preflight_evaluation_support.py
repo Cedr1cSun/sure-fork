@@ -91,6 +91,17 @@ class PreflightCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(written["supported"], written["checks"])
 
+    def test_lid_accuracy_route_is_supported(self):
+        capabilities = _capabilities("LID", "any")
+        self.assertEqual(capabilities["default_metrics"], ["accuracy"])
+        self.assertIn(
+            "lid.any.accuracy.lid_label_canonical_v1.classify_v1",
+            {row["pipeline_id"] for row in capabilities["route_choices"]},
+        )
+        result, written = _run_preflight(_payload([_dataset("LID", "any", ["accuracy"])]))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(written["supported"], written["checks"])
+
     def test_unsupported_metric_exits_three_with_fixed_reason(self):
         result, written = _run_preflight(_payload([_dataset("ASR", "zh", ["definitely_not_a_metric"])]))
         self.assertEqual(result.returncode, 3)

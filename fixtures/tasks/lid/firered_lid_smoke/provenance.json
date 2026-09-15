@@ -1,0 +1,82 @@
+{
+  "schema": "sure.fixture_provenance.v2",
+  "task": "lid",
+  "dataset": {
+    "repository": "OpenSLR SLR12",
+    "revision": "LibriSpeech ASR corpus release",
+    "configuration": "test-clean or test-other",
+    "split": "test",
+    "license": "CC-BY-4.0",
+    "license_url": "https://www.openslr.org/resources/12/LICENSE.TXT",
+    "source_url": "https://www.openslr.org/12",
+    "citation_url": "https://www.danielpovey.com/files/2015_icassp_librispeech.pdf",
+    "source_id": "composite",
+    "composition": "mixed-source fixture; source_id is recorded per file",
+    "source_datasets": [
+      {
+        "repository": "OpenSLR SLR12",
+        "revision": "LibriSpeech ASR corpus release",
+        "configuration": "test-clean or test-other",
+        "split": "test",
+        "license": "CC-BY-4.0",
+        "license_url": "https://www.openslr.org/resources/12/LICENSE.TXT",
+        "source_url": "https://www.openslr.org/12",
+        "citation_url": "https://www.danielpovey.com/files/2015_icassp_librispeech.pdf",
+        "source_id": "librispeech"
+      },
+      {
+        "repository": "OpenSLR SLR33",
+        "revision": "AISHELL-1 corpus release",
+        "configuration": "AISHELL-1",
+        "split": "test",
+        "license": "Apache-2.0",
+        "license_url": "https://www.openslr.org/33/",
+        "source_url": "https://www.openslr.org/33/",
+        "citation_url": "https://www.isca-archive.org/iscslp_2017/bu17_iscslp.html",
+        "source_id": "aishell1"
+      }
+    ],
+    "metadata_sha256": "49b61bd5bcd670271ac605a83123adb310a0b22853e462b1c1c680d7a33080ee",
+    "metadata_hash_basis": "canonical selected key/task/annotation projection"
+  },
+  "selection": {
+    "rule": "deterministic smoke subset with task-native labels and at most five inference samples",
+    "sample_ids": [
+      "lid_en",
+      "lid_zh"
+    ]
+  },
+  "annotations": {
+    "source": "dataset metadata or deterministic fixture transform",
+    "ground_truth_path": "gt.jsonl",
+    "ground_truth_sha256": "d1837902d80b353828dd2fe76d3909c188ce353e178ab12f12356d641232038b"
+  },
+  "transforms": [
+    {
+      "id": "source_media_copy",
+      "command": "copy source media bytes without modification; verify SHA-256"
+    }
+  ],
+  "files": [
+    {
+      "path": "sample_en.wav",
+      "roles": [
+        "audio"
+      ],
+      "sha256": "8acca801d5380560525c8573f1454c61697cffc50b081e47919ba60eb80c9d7d",
+      "transform_id": "source_media_copy",
+      "source_id": "librispeech",
+      "source_sha256": "8acca801d5380560525c8573f1454c61697cffc50b081e47919ba60eb80c9d7d"
+    },
+    {
+      "path": "sample_zh.wav",
+      "roles": [
+        "audio"
+      ],
+      "sha256": "c6edc118cb460dbd7cb2ffc546932bba650bff27571e179b4bdfd9f4098c2374",
+      "transform_id": "source_media_copy",
+      "source_id": "aishell1",
+      "source_sha256": "c6edc118cb460dbd7cb2ffc546932bba650bff27571e179b4bdfd9f4098c2374"
+    }
+  ]
+}

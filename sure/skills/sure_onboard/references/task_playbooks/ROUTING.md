@@ -33,6 +33,7 @@ fallback to reading all task playbooks.
 |-------------|------|------------------------|
 | `ASR`, `asr`, automatic speech recognition, speech-to-text only | `task_playbooks/ASR.md` | `TTS.md`, `VC.md`, `KWS.md`, `SPEECH_UNDERSTANDING.md` |
 | `Classification`, `S2TT`, `SER`, `SLU`, `GR`, `SD`, `SA-ASR`, `SE`, `SV`, `TSE`, or `VAD` | `task_playbooks/SPEECH_UNDERSTANDING.md` | Other atomic playbooks unless the model also supports those tasks |
+| `LID`, spoken language identification | `task_playbooks/LID.md` | `ASR.md`, `KWS.md`, `TTS.md`, `VC.md` |
 | `SPEECH_UNDERSTANDING` | `task_playbooks/SPEECH_UNDERSTANDING.md` plus every atomic playbook present for generated suite members | None of the generated suite members |
 | `TTS`, text-to-speech, speech synthesis | `task_playbooks/TTS.md` | `ASR.md`, `VC.md`, `KWS.md` |
 | `VC`, voice conversion, timbre conversion, speech conversion | `task_playbooks/VC.md` | `ASR.md`, `TTS.md`, `KWS.md` |

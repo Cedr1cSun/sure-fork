@@ -47,6 +47,7 @@ DEVICES = {"auto", "cuda", "cpu", "mps"}
 
 ALL_TASK_PLAYBOOKS = [
     "references/task_playbooks/ASR.md",
+    "references/task_playbooks/LID.md",
     "references/task_playbooks/SPEECH_UNDERSTANDING.md",
     "references/task_playbooks/TTS.md",
     "references/task_playbooks/VC.md",
@@ -230,12 +231,15 @@ def task_playbooks_for(task_type: str) -> list[str]:
         return [
             "references/task_playbooks/SPEECH_UNDERSTANDING.md",
             "references/task_playbooks/ASR.md",
+            "references/task_playbooks/LID.md",
             "references/task_playbooks/KWS.md",
             "references/task_playbooks/TTS.md",
             "references/task_playbooks/VC.md",
         ]
     if task == "asr":
         return ["references/task_playbooks/ASR.md"]
+    if task == "lid":
+        return ["references/task_playbooks/LID.md"]
     if task == "sa_asr":
         return [
             "references/task_playbooks/SPEECH_UNDERSTANDING.md",

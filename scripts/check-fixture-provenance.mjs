@@ -89,6 +89,27 @@ function validateDataset(dataset, provenancePath) {
 	for (const field of ["license_url", "source_url", "citation_url"]) {
 		if (!dataset[field].startsWith("https://")) fail(`${provenancePath}: dataset.${field} must use HTTPS`);
 	}
+	if (Array.isArray(dataset.source_datasets)) {
+		if (dataset.source_datasets.length < 2 || dataset.source_id !== "composite") {
+			fail(`${provenancePath}: composite dataset must declare at least two source_datasets and source_id=composite`);
+		}
+		const sourceIds = new Set();
+		for (const [index, source] of dataset.source_datasets.entries()) {
+			if (typeof source?.source_id !== "string" || !source.source_id || sourceIds.has(source.source_id)) {
+				fail(`${provenancePath}: dataset.source_datasets source_id values must be unique and non-empty`);
+			}
+			sourceIds.add(source.source_id);
+			for (const field of ["repository", "revision", "configuration", "split", "license", "license_url", "source_url", "citation_url"]) {
+				if (typeof source?.[field] !== "string" || !source[field]) {
+					fail(`${provenancePath}: dataset.source_datasets[${index}].${field} is required`);
+				}
+			}
+			if (!allowedLicenses.has(source.license)) fail(`${provenancePath}: unapproved dataset.source_datasets[${index}].license ${source.license}`);
+			for (const field of ["license_url", "source_url", "citation_url"]) {
+				if (!source[field].startsWith("https://")) fail(`${provenancePath}: dataset.source_datasets[${index}].${field} must use HTTPS`);
+			}
+		}
+	}
 }
 
 function validateV1(provenance, provenancePath) {
@@ -164,6 +185,9 @@ function validateV2(provenance, provenancePath) {
 			fail(`${provenancePath}: invalid source SHA-256 for ${item.path}`);
 		}
 		if (!transforms.has(item.transform_id)) fail(`${provenancePath}: unknown transform ${item.transform_id}`);
+		if (Array.isArray(provenance.dataset.source_datasets) && !provenance.dataset.source_datasets.some((source) => source.source_id === item.source_id)) {
+			fail(`${provenancePath}: file ${item.path} has an unknown source_id`);
+		}
 		const path = resolve(fixtureRoot, item.path);
 		const stat = lstatSync(path);
 		if (!stat.isFile() || stat.isSymbolicLink()) fail(`${provenancePath}: declared file must be regular: ${item.path}`);

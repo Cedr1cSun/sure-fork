@@ -18,12 +18,16 @@ from materialize_onboard_inputs import task_playbooks_for
 
 
 class TaskRegistryFixtureTests(unittest.TestCase):
+    def test_lid_uses_its_task_specific_playbook(self) -> None:
+        self.assertEqual(task_playbooks_for("lid"), ["references/task_playbooks/LID.md"])
+
     def test_speech_understanding_loads_every_available_atomic_playbook(self) -> None:
         self.assertEqual(
             task_playbooks_for("speech_understanding"),
             [
                 "references/task_playbooks/SPEECH_UNDERSTANDING.md",
                 "references/task_playbooks/ASR.md",
+                "references/task_playbooks/LID.md",
                 "references/task_playbooks/KWS.md",
                 "references/task_playbooks/TTS.md",
                 "references/task_playbooks/VC.md",
@@ -64,7 +68,7 @@ class TaskRegistryFixtureTests(unittest.TestCase):
             )
             self.assertEqual(prepared.returncode, 0, msg=prepared.stderr)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self.assertEqual(len(manifest["suite_members"]), 15)
+            self.assertEqual(len(manifest["suite_members"]), 16)
             self.assertEqual(
                 {entry["task_type"] for entry in manifest["subtask_fixtures"]},
                 set(manifest["suite_members"]),
