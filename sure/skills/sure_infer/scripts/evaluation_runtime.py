@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from harness_runtime import HarnessRuntimeBindingError, load_harness_runtime
+from resolve_evaluation_engine import git_environment, git_repo_root
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -107,8 +108,10 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def evaluation_child_environment(parent: dict[str, str] | None = None) -> dict[str, str]:
-    """Remove Harness-only dynamic libraries before launching evaluation tools."""
+    """Remove Harness interpreter state and dynamic libraries before evaluation."""
     env = dict(parent if parent is not None else os.environ)
+    for key in ("PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE"):
+        env.pop(key, None)
     harness_root = env.get("SURE_HARNESS_RUNTIME_ROOT", "").strip()
     harness_lib = str(Path(harness_root) / "base" / "lib") if harness_root else ""
     entries = [entry for entry in env.get("LD_LIBRARY_PATH", "").split(":") if entry]
@@ -122,13 +125,15 @@ def evaluation_child_environment(parent: dict[str, str] | None = None) -> dict[s
 
 def _engine_commit(engine_root: Path) -> str:
     try:
+        if git_repo_root(engine_root) is None:
+            return ""
         completed = subprocess.run(
             ["git", "-c", f"safe.directory={engine_root}", "rev-parse", "HEAD"],
             cwd=engine_root,
             capture_output=True,
             text=True,
             check=False,
-            env=evaluation_child_environment(),
+            env=git_environment(evaluation_child_environment()),
         )
     except OSError as exc:
         # An empty commit means "git looked and found nothing pinned here"; a git
@@ -143,17 +148,9 @@ def _engine_commit(engine_root: Path) -> str:
 def _engine_has_repository(engine_root: Path) -> bool:
     """Whether there is a repository here at all to ask about the commit."""
     try:
-        completed = subprocess.run(
-            ["git", "-c", f"safe.directory={engine_root}", "rev-parse", "--git-dir"],
-            cwd=engine_root,
-            capture_output=True,
-            text=True,
-            check=False,
-            env=evaluation_child_environment(),
-        )
+        return git_repo_root(engine_root) is not None
     except OSError:
         return False
-    return completed.returncode == 0
 
 
 def _approved_harness_runtime() -> dict[str, Any]:
@@ -181,7 +178,10 @@ def _expected_binding(engine_root: Path) -> dict[str, Any]:
     lock_path = SPEC_ROOT / str(spec.get("lock_file") or "requirements.lock.txt")
     pyproject = engine_root / "pyproject.toml"
     if not lock_path.is_file() or not pyproject.is_file():
-        raise EvaluationIdentityUnavailable("evaluation runtime lock or engine pyproject.toml is missing")
+        raise EvaluationIdentityUnavailable(
+            "evaluation runtime lock or engine pyproject.toml is missing; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
     commit = _engine_commit(engine_root)
     if not commit:
         # No repository here is the same "cannot ask" as a missing git: the
@@ -354,7 +354,14 @@ def _materialize(binding: dict[str, Any]) -> None:
                 "-r",
                 str(binding["lock_path"]),
             ]
-            completed = subprocess.run(command, capture_output=True, text=True, check=False, timeout=600)
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=600,
+                env=evaluation_child_environment(),
+            )
             log_path.write_text(
                 "$ " + " ".join(command) + "\n" + completed.stdout + "\n" + completed.stderr,
                 encoding="utf-8",

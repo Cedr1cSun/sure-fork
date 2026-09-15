@@ -58,6 +58,10 @@ class CheckExecutionResultTests(unittest.TestCase):
             self.product_dir / "prediction_generation_status.json",
             {"datasets": [{"dataset": DATASET, "status": status, "num_expected_samples": rows, "num_generated_samples": rows}]},
         )
+        self.write_json(
+            self.product_dir / "validation_payload.json",
+            {"is_valid": True, "results": [{"dataset": DATASET, "is_valid": True}]},
+        )
         (self.product_dir / "protocol.yaml").write_text("schema: sure.eval.inference_protocol.v1\n", encoding="utf-8")
         references = self.product_dir / "references" / "sure_benchmark" / "jsonl"
         references.mkdir(parents=True, exist_ok=True)
@@ -114,6 +118,24 @@ class CheckExecutionResultTests(unittest.TestCase):
     def test_a_dataset_the_status_file_did_not_complete_fails(self) -> None:
         self.write_product(rows=2, status="running")
         self.assertTrue(any("not completed" in error for error in self.errors()))
+
+    def test_a_success_with_invalid_validation_payload_fails(self) -> None:
+        self.write_json(self.product_dir / "validation_payload.json", {"is_valid": False, "results": []})
+        errors = self.errors()
+        self.assertTrue(any("is_valid=true" in error for error in errors))
+        self.assertTrue(any("has no result" in error for error in errors))
+
+    def test_a_success_with_missing_or_invalid_validation_payload_returns_gate_errors(self) -> None:
+        validation_path = self.product_dir / "validation_payload.json"
+        for contents in (None, "{not-json"):
+            with self.subTest(contents=contents):
+                if contents is None:
+                    validation_path.unlink()
+                else:
+                    validation_path.write_text(contents, encoding="utf-8")
+                errors = self.errors()
+                self.assertTrue(any("missing or invalid" in error for error in errors))
+                self.assertTrue(any("has no result" in error for error in errors))
 
     def test_a_missing_protocol_fails_a_success(self) -> None:
         (self.product_dir / "protocol.yaml").unlink()

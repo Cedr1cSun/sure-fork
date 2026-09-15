@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import evaluate_predictions as ep  # noqa: E402
 from evaluation_runtime import EvaluationRuntimeError  # noqa: E402
+import run_eval as reval  # noqa: E402
 
 
 class BridgeFailureReportingTests(unittest.TestCase):
@@ -150,6 +151,43 @@ class UnsupportedMessageTests(unittest.TestCase):
         )
         self.assertIn("legacy evaluator", message)
         self.assertNotIn("rejected", message)
+
+
+class PipelineHintTests(unittest.TestCase):
+    def test_catalog_routes_are_reported_when_a_language_has_no_metric_route(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            engine = Path(directory)
+            catalog = engine / "docs" / "pipeline_catalog.jsonl"
+            catalog.parent.mkdir()
+            catalog.write_text(
+                json.dumps({"task": "asr", "language": "zh", "pipeline_id": "asr.zh.cer.v1"})
+                + "\n"
+                + json.dumps({"task": "asr", "language": "en", "pipeline_id": "asr.en.wer.v1"})
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                reval._pipeline_hints(engine, "ASR", "mix_zh-en"),
+                ["asr.zh.cer.v1 (language=zh)", "asr.en.wer.v1 (language=en)"],
+            )
+
+    def test_one_failed_metric_is_not_silently_dropped(self) -> None:
+        original = ep._describe_external_pipeline
+
+        def describe(**kwargs: object) -> dict[str, object]:
+            if kwargs.get("metric") == "wer":
+                raise ValueError("No configured route found")
+            return {"pipeline_id": "asr.zh.cer.v1"}
+
+        ep._describe_external_pipeline = describe
+        self.addCleanup(setattr, ep, "_describe_external_pipeline", original)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "did not all resolve"):
+                reval._pipeline_ids_for_metrics(
+                    ["cer", "wer"],
+                    engine_root=Path(directory),
+                    imported=[{"dataset": "demo__v1", "task": "ASR", "language": "zh"}],
+                )
 
 
 class MeetEvalProjectionTests(unittest.TestCase):

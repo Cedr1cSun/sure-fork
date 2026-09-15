@@ -20,6 +20,7 @@ from typing import Any
 
 from sure_eval.core.logging import get_logger
 
+from resolve_evaluation_engine import git_environment
 from evaluation_runtime import evaluation_child_environment
 
 logger = get_logger(__name__)
@@ -44,7 +45,7 @@ def _git_commit(root: Path | None) -> str | None:
         text=True,
         check=False,
         timeout=30,
-        env=evaluation_child_environment(),
+        env=git_environment(evaluation_child_environment()),
     )
     value = completed.stdout.strip()
     return value if completed.returncode == 0 and value else None

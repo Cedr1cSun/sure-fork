@@ -17,7 +17,8 @@ Environment (all injected by the launcher; the names are the templates'):
   DATASETS, MAX_SAMPLES, NO_RESUME, DEVICE, METRICS, SMOKE_TEST_SAMPLES,
   SURE_EVAL_CONFIG, SURE_EVAL_DATASETS_ROOT, SURE_EVAL_APPROVED_MODEL_DIR,
   SURE_EVAL_APPROVED_RESULT_DIR, SURE_EVAL_PUBLISHED_RUN_DIR,
-  SURE_EVAL_INPUT_RESOLVED, HARNESS_PYTHON_BIN, MODEL_PYTHON
+  SURE_EVAL_INPUT_RESOLVED, SURE_EVAL_FROM_STAGE, HARNESS_PYTHON_BIN,
+  MODEL_PYTHON
 """
 from __future__ import annotations
 
@@ -50,6 +51,7 @@ STAGES: tuple[str, ...] = (
     "references",
     "finalize",
 )
+RESUMABLE_STAGES = frozenset({"validate", "protocol", "references", "finalize"})
 PROTOCOL_IDS = ("standard_system", "strict_core")
 DEFAULT_TOOL_NAME = "transcribe_audio"
 DEFAULT_SMOKE_SAMPLES = 10
@@ -149,6 +151,12 @@ def stage_guards() -> Ctx:
     protocol_id = _env("PROTOCOL_ID", "standard_system")
     if protocol_id not in PROTOCOL_IDS:
         raise StageError("guards", f"PROTOCOL_ID must be one of {', '.join(PROTOCOL_IDS)}, got {protocol_id!r}")
+    from_stage = _env("SURE_EVAL_FROM_STAGE")
+    if from_stage and from_stage not in RESUMABLE_STAGES:
+        raise StageError(
+            "guards",
+            f"SURE_EVAL_FROM_STAGE must be one of {', '.join(sorted(RESUMABLE_STAGES))}, got {from_stage!r}",
+        )
 
     raw_run_dir = _env("RUN_DIR")
     if not raw_run_dir:
@@ -441,7 +449,7 @@ def main() -> int:
     stage = "guards"
     try:
         ctx = stage_guards()
-        for stage, function in (
+        flow = (
             ("tool_name", stage_tool_name),
             ("config", stage_config),
             ("prepare", stage_prepare),
@@ -452,7 +460,21 @@ def main() -> int:
             ("protocol", stage_protocol),
             ("references", stage_references),
             ("finalize", stage_finalize),
-        ):
+        )
+        from_stage = _env("SURE_EVAL_FROM_STAGE")
+        if from_stage:
+            start = next(index for index, (name, _) in enumerate(flow) if name == from_stage)
+            # These stages provide the dataset list, language map and config
+            # needed by validation and protocol/reference finalization. They do
+            # not start the model server or load model weights.
+            required_prefix = {"tool_name", "config", "prepare"}
+            flow = tuple(
+                (name, function)
+                for index, (name, function) in enumerate(flow)
+                if name in required_prefix or index >= start
+            )
+            print(f"Resuming inference from stage: {from_stage}", flush=True)
+        for stage, function in flow:
             function(ctx)
     except StageError as exc:
         print(f"ERROR [{exc.stage}]: {exc}", file=sys.stderr, flush=True)

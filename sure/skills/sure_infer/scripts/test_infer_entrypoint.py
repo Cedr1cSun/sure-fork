@@ -237,6 +237,13 @@ class InferEntrypointTests(unittest.TestCase):
         for call in self.generate_calls():
             self.assertNotIn("--resume", call)
 
+    def test_resume_from_validate_skips_model_generation_stages(self) -> None:
+        completed = self.run_entrypoint(SURE_EVAL_FROM_STAGE="validate")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(self.generate_calls(), [])
+        self.assertTrue((self.run_dir / "validation_payload.json").is_file())
+        self.assertTrue((self.run_dir / "protocol.yaml").is_file())
+
     def test_each_dataset_gets_its_own_language(self) -> None:
         completed = self.run_entrypoint()
         self.assertEqual(completed.returncode, 0, completed.stderr)

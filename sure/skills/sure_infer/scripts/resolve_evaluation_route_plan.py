@@ -13,7 +13,7 @@ from typing import Any
 
 from evaluation_capabilities import discover_engine_capabilities, normalize_engine_task
 from evaluation_runtime import ensure_evaluation_runtime
-from resolve_evaluation_engine import resolve_engine_root
+from resolve_evaluation_engine import git_environment, git_repo_root, resolve_engine_root
 
 
 def _utc_now() -> str:
@@ -34,12 +34,15 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _engine_commit(root: Path) -> str:
+    if git_repo_root(root) is None:
+        return ""
     completed = subprocess.run(
         ["git", "-c", f"safe.directory={root}", "rev-parse", "HEAD"],
         cwd=root,
         capture_output=True,
         text=True,
         check=False,
+        env=git_environment(),
     )
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
@@ -158,7 +161,10 @@ def build_route_plan(
         engine_hint = str(engine.get("engine_root") or "") or None
     resolved_engine = resolve_engine_root(engine_hint)
     if resolved_engine is None:
-        raise FileNotFoundError("Unable to resolve sure-evaluation engine root")
+        raise FileNotFoundError(
+            "Unable to resolve sure-evaluation engine root; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
     engine_source, engine_root = resolved_engine
     evaluation_runtime = ensure_evaluation_runtime(engine_root, prepare=True)
     from evaluation_capabilities import _insert_engine_src

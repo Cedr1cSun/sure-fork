@@ -29,6 +29,10 @@ for _parent in Path(__file__).resolve().parents:
 
 from sure.site.loader import load_site_policy
 
+INFER_SCRIPTS = HARNESS_ROOT / "sure" / "skills" / "sure_infer" / "scripts"
+sys.path.insert(0, str(INFER_SCRIPTS))
+from resolve_evaluation_engine import git_environment, git_repo_root, resolve_engine_root
+
 LOCAL_RESULTS_ROOT = (HARNESS_ROOT / "sure" / "results").resolve()
 SOURCE_KINDS = {"approved_nfs_results", "local_infer_run"}
 EVALUATION_ENGINE_ROOT = (HARNESS_ROOT / "sure" / "external" / "sure-evaluation").resolve()
@@ -123,6 +127,11 @@ def _regular_files(root: Path, *, exclude_manifest: bool = False) -> set[str]:
 
 
 def _engine_source_paths(root: Path) -> list[Path]:
+    if git_repo_root(root) is None:
+        raise RuntimeError(
+            "evaluation engine checkout is not its own git repository; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
     command_prefix = ["git", "-c", f"safe.directory={root}", "ls-files", "-z"]
     pathspec = ["--", "pyproject.toml", "src/sure_eval/evaluation"]
     relative_paths: set[str] = set()
@@ -132,6 +141,7 @@ def _engine_source_paths(root: Path) -> list[Path]:
             cwd=root,
             capture_output=True,
             check=False,
+            env=git_environment(),
         )
         if completed.returncode != 0:
             message = completed.stderr.decode("utf-8", errors="replace").strip()
@@ -162,12 +172,18 @@ def _engine_tree_sha256(root: Path) -> str:
 
 
 def _engine_commit(root: Path) -> str:
+    if git_repo_root(root) is None:
+        raise RuntimeError(
+            "evaluation engine checkout is not its own git repository; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
     completed = subprocess.run(
         ["git", "-c", f"safe.directory={root}", "rev-parse", "HEAD"],
         cwd=root,
         capture_output=True,
         text=True,
         check=False,
+        env=git_environment(),
     )
     if completed.returncode != 0:
         raise RuntimeError(
@@ -342,9 +358,18 @@ def validate(path: Path) -> list[str]:
         )
     route_plan = _read_json(artifact_paths["evaluation_route_plan"])
     route_engine = route_plan.get("engine") if isinstance(route_plan.get("engine"), dict) else {}
-    current_engine_commit = _engine_commit(EVALUATION_ENGINE_ROOT)
-    current_engine_tree = _engine_tree_sha256(EVALUATION_ENGINE_ROOT)
-    if Path(str(route_engine.get("engine_root") or "")).resolve() != EVALUATION_ENGINE_ROOT:
+    engine_hint = os.environ.get("SURE_EVALUATION_HOME") or str(EVALUATION_ENGINE_ROOT)
+    resolved_engine = resolve_engine_root(engine_hint)
+    if resolved_engine is None:
+        errors.append(
+            "the pinned sure-evaluation engine is unavailable; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
+        return errors
+    current_engine_root = resolved_engine[1]
+    current_engine_commit = _engine_commit(current_engine_root)
+    current_engine_tree = _engine_tree_sha256(current_engine_root)
+    if Path(str(route_engine.get("engine_root") or "")).resolve() != current_engine_root:
         errors.append("evaluation route plan did not use the harness-pinned sure-evaluation engine")
     if route_engine.get("tree_sha256") != current_engine_tree:
         errors.append("evaluation engine tree changed or differs from the route plan fingerprint")

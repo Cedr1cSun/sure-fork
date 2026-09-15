@@ -16,6 +16,15 @@ for _parent in Path(__file__).resolve().parents:
 from sure.runtime.evaluation.task_registry import normalize_task, task_profile
 
 
+STATIC_CAPABILITIES = (
+    Path(__file__).resolve().parents[4]
+    / "sure"
+    / "runtime"
+    / "evaluation"
+    / "engine-capabilities.generated.json"
+)
+
+
 def normalize_engine_task(task: str) -> str:
     """Map harness task labels to the engine task id."""
 
@@ -58,6 +67,8 @@ def _catalog_entries(engine_root: Path, task: str, language: str) -> list[dict[s
             row = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(row, dict):
+            continue
         aliases = {
             str(row.get("task") or "").strip().lower().replace("-", "_"),
             str(row.get("task_alias") or "").strip().lower().replace("-", "_"),
@@ -71,10 +82,47 @@ def _catalog_entries(engine_root: Path, task: str, language: str) -> list[dict[s
     return rows
 
 
+def _static_capabilities(task: str, language: str) -> dict[str, Any] | None:
+    """Read the checked-in capability snapshot when the engine checkout is absent."""
+    if not STATIC_CAPABILITIES.is_file():
+        return None
+    try:
+        document = json.loads(STATIC_CAPABILITIES.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    tasks = document.get("tasks")
+    if not isinstance(tasks, dict):
+        return None
+    profile = tasks.get(task)
+    if not isinstance(profile, dict):
+        return None
+    language_name = str(language or "").strip().lower()
+    routes = [route for route in profile.get("routes") or [] if isinstance(route, dict)]
+    matching = [
+        route
+        for route in routes
+        if not language_name or str(route.get("language") or "").strip().lower() in {"", language_name}
+    ]
+    catalog = [{"task": task, **route} for route in matching]
+    metrics = _dedupe([str(route.get("metric") or "") for route in matching])
+    return {
+        "task": str(profile.get("engine_task") or task),
+        "language": language,
+        "default_metrics": metrics[:1],
+        "supported_metrics": metrics,
+        "route_choices": matching,
+        "catalog_entries": catalog,
+    }
+
+
 def discover_engine_capabilities(engine_root: Path, task: str, language: str) -> dict[str, Any]:
     """Return current engine-supported metrics and route choices for a task/language."""
 
     engine_task = normalize_engine_task(task)
+    if not (engine_root / "src" / "sure_eval" / "evaluation" / "agent_plan.py").is_file():
+        static = _static_capabilities(engine_task, language)
+        if static is not None:
+            return static
     _insert_engine_src(engine_root)
     from sure_eval.evaluation.agent_plan import build_agent_plan
     from sure_eval.evaluation.cli_adapters import build_pipeline_spec

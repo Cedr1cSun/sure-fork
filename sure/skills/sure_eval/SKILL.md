@@ -60,6 +60,11 @@ scanned threshold; it cannot recover candidates suppressed by the model's
 internal threshold. Full WekWS-style DET/FAR requires threshold-independent
 candidate scores from the model wrapper.
 
+If a requested metric has no route for a dataset language (for example a mixed
+language split), the backend stops before scoring and includes available catalog
+pipeline IDs in the error. Re-run with an exact `pipeline_id` only after checking
+that route's language and metric semantics.
+
 ## State Machine
 
 Advance happens **only** when the current unit's `produces` artifact is compliant (location + format + value domain; no forbidden fields). Linear units are agent self-driven; gate units additionally run a Python semantic check. Produce the current unit's artifact, then call `sure_update_state`.
