@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -734,6 +735,25 @@ def _extract_response_payload(response: dict[str, Any]) -> Any:
         return text
 
 
+def _single_line_text(value: Any) -> str:
+    """Keep scalar prediction projections one record per output line."""
+    return str(value).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+
+
+def _path_text(value: Any, *, field: str) -> str:
+    """Reject line breaks in path projections instead of silently changing them."""
+    text = str(value)
+    if "\r" in text or "\n" in text:
+        raise ValueError(f"{field} cannot contain newline characters")
+    return text
+
+
+def _prediction_projection(value: Any, *, task: str) -> str:
+    if task.upper() in {"TTS", "VC", "SE", "TSE", "SD", "SA-ASR", "SA_ASR"}:
+        return _path_text(value, field="prediction")
+    return _single_line_text(value)
+
+
 def _normalize_prediction_payload(payload: Any, *, task: str) -> tuple[str, dict[str, Any]]:
     task_name = task.upper()
     if isinstance(payload, dict):
@@ -748,7 +768,8 @@ def _normalize_prediction_payload(payload: Any, *, task: str) -> tuple[str, dict
                 # quotes included, straight into the prediction file.
                 value = value[0]
             field = "translation" if task_name == "S2TT" else "text"
-            return str(value), {field: str(value), "text": str(value)}
+            normalized_value = _single_line_text(value)
+            return normalized_value, {field: normalized_value, "text": normalized_value}
         if task_name in {"TTS", "VC", "SE", "TSE"}:
             value = (
                 prediction.get("audio_path")
@@ -759,34 +780,38 @@ def _normalize_prediction_payload(payload: Any, *, task: str) -> tuple[str, dict
                 or payload.get("path")
                 or ""
             )
-            normalized = {"audio_path": str(value)}
+            normalized_value = _path_text(value, field="audio_path")
+            normalized = {"audio_path": normalized_value}
             if task_name == "VC":
-                normalized["converted_audio"] = str(value)
+                normalized["converted_audio"] = normalized_value
                 for key in ("source_audio_path", "reference_audio_path"):
                     if prediction.get(key) is not None:
-                        normalized[key] = prediction[key]
+                        normalized[key] = _path_text(prediction[key], field=key)
             elif task_name == "SE":
-                normalized["enhanced_audio"] = str(value)
+                normalized["enhanced_audio"] = normalized_value
             elif task_name == "TSE":
-                normalized["prediction_audio"] = str(value)
+                normalized["prediction_audio"] = normalized_value
             for key in ("sample_rate", "duration_ms"):
                 if prediction.get(key) is not None:
                     normalized[key] = prediction[key]
-            return str(value), normalized
+            return normalized_value, normalized
         if task_name in {"CLASSIFICATION", "SER", "GR"}:
             value = prediction.get("label") or payload.get("label") or payload.get("text") or ""
-            return str(value), {"label": str(value)}
+            normalized_value = _single_line_text(value)
+            return normalized_value, {"label": normalized_value}
         if task_name == "SLU":
             value = prediction.get("text") or prediction.get("label") or payload.get("text") or payload.get("label") or ""
-            normalized = {"answer": str(value), "text": str(value)}
+            normalized_value = _single_line_text(value)
+            normalized = {"answer": normalized_value, "text": normalized_value}
             if prediction.get("label") is not None:
-                normalized["label"] = prediction["label"]
-            return str(value), normalized
+                normalized["label"] = _single_line_text(prediction["label"])
+            return normalized_value, normalized
         if task_name in {"SD", "SA-ASR", "SA_ASR"}:
             if prediction.get("segments") is not None:
                 return json.dumps(prediction["segments"], ensure_ascii=False), {"segments": prediction["segments"]}
             value = prediction.get("annotation_path") or prediction.get("annotation") or payload.get("text") or ""
-            return str(value), {"annotation": value}
+            normalized_value = _path_text(value, field="annotation_path")
+            return normalized_value, {"annotation": normalized_value}
         if task_name == "KWS":
             if "detected" not in prediction and "detected" not in payload:
                 raise ValueError("KWS prediction is missing detected")
@@ -839,10 +864,15 @@ def _normalize_prediction_payload(payload: Any, *, task: str) -> tuple[str, dict
         if task_name == "SV":
             embedding = prediction.get("embedding") or payload.get("embedding") or []
             return json.dumps(embedding), {"embedding": embedding}
-        value = payload.get("text", "")
-        return str(value), {"text": str(value)}
+        normalized_value = _single_line_text(payload.get("text", ""))
+        return normalized_value, {"text": normalized_value}
 
-    value = str(payload)
+    if task_name in {"TTS", "VC", "SE", "TSE"}:
+        value = _path_text(payload, field="audio_path")
+    elif task_name in {"SD", "SA-ASR", "SA_ASR"}:
+        value = _path_text(payload, field="annotation_path")
+    else:
+        value = _single_line_text(payload)
     if task_name in {"TTS", "VC", "SE", "TSE"}:
         normalized = {"audio_path": value}
         if task_name == "VC":
@@ -861,6 +891,29 @@ def _normalize_prediction_payload(payload: Any, *, task: str) -> tuple[str, dict
     return value, {"text": value}
 
 
+def _process_device(requested: str | None) -> str:
+    """Map a physical CUDA request to the address visible inside the process."""
+    request = str(requested or "").strip()
+    if not request:
+        return request
+    attested = os.environ.get("SURE_EVAL_DEVICE_ACTUAL", "").strip()
+    attested_request = os.environ.get("SURE_EVAL_DEVICE_REQUEST", "").strip()
+    if attested and (
+        (not attested_request or attested_request.lower() == request.lower())
+        and (
+            (request.lower() == "cpu" and attested.lower() == "cpu")
+            or (request.lower().startswith("cuda") and attested.lower().startswith("cuda"))
+            or request.lower() == "auto"
+        )
+    ):
+        return attested
+    match = re.fullmatch(r"cuda:(\d+)", request.lower())
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+    if match and len(visible.split(",")) == 1 and visible == match.group(1):
+        return "cuda:0"
+    return request
+
+
 def _load_existing_predictions(path: Path, *, exclude_keys: set[str] | None = None) -> dict[str, str]:
     predictions: dict[str, str] = {}
     if not path.exists():
@@ -877,10 +930,12 @@ def _load_existing_predictions(path: Path, *, exclude_keys: set[str] | None = No
                 parts = line.split(None, 1)
                 key = parts[0]
                 value = parts[1] if len(parts) > 1 else ""
+            if not key.strip():
+                continue
             if key in excluded:
                 continue
             if value.strip():
-                predictions[key] = value
+                predictions[key] = _single_line_text(value)
     return predictions
 
 
@@ -896,10 +951,25 @@ def _load_existing_structured_predictions(path: Path) -> dict[str, dict[str, Any
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(row, dict):
+                continue
             key = str(row.get("key", ""))
             if key:
                 records[key] = row
     return records
+
+
+def _resume_complete_keys(
+    predictions: dict[str, str], structured: dict[str, dict[str, Any]]
+) -> set[str]:
+    """Return rows safe to skip during a resumed generation pass."""
+    return {
+        key
+        for key, value in predictions.items()
+        if value.strip()
+        and isinstance(structured.get(key, {}).get("normalized_prediction"), str)
+        and structured[key]["normalized_prediction"] == value
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -934,7 +1004,8 @@ def _write_prediction_snapshots(
     with open(prediction_tmp, "w", encoding="utf-8") as handle:
         for sample in samples:
             key = str(sample.get("key", ""))
-            handle.write(f"{key}\t{prediction_map.get(key, '')}\n")
+            value = _prediction_projection(prediction_map.get(key, ""), task=sample_task)
+            handle.write(f"{key}\t{value}\n")
     prediction_tmp.replace(prediction_path)
 
     with open(structured_tmp, "w", encoding="utf-8") as handle:
@@ -948,7 +1019,9 @@ def _write_prediction_snapshots(
                     "task": sample_task,
                     "language": str(sample.get("language") or sample_language),
                     "prediction": {},
-                    "normalized_prediction": prediction_map.get(key, ""),
+                    "normalized_prediction": _prediction_projection(
+                        prediction_map.get(key, ""), task=sample_task
+                    ),
                     "raw_response": None,
                 },
             )
@@ -1198,9 +1271,13 @@ def main() -> int:
         server_env_config[key] = configured
         env[key] = configured
 
-    # Override DEVICE if --device is explicitly provided
+    # Override DEVICE if --device is explicitly provided. A launcher may have
+    # narrowed CUDA_VISIBLE_DEVICES to one physical card, in which case that
+    # card is visible to torch as cuda:0.
     if args.device:
-        env["DEVICE"] = str(args.device)
+        env["DEVICE"] = _process_device(args.device)
+        env.setdefault("SURE_EVAL_DEVICE_REQUEST", str(args.device))
+        env["SURE_EVAL_DEVICE_ACTUAL"] = env["DEVICE"]
         if str(args.device).lower() == "cpu" and "CUDA_VISIBLE_DEVICES" not in env:
             env["CUDA_VISIBLE_DEVICES"] = ""
     env_overrides = _parse_env_overrides(args.env)
@@ -1252,6 +1329,7 @@ def main() -> int:
     existing_structured = _load_existing_structured_predictions(structured_prediction_path) if args.resume else {}
     prediction_map = dict(existing_predictions)
     structured_map = dict(existing_structured)
+    resume_complete_keys = _resume_complete_keys(prediction_map, structured_map)
 
     default_status_payload: dict[str, Any] = {
         "schema": "sure.eval.prediction_generation_status.v2",
@@ -1384,7 +1462,10 @@ def main() -> int:
                 scratch_dir = Path(scratch)
                 for sample in samples:
                     key = str(sample.get("key", ""))
-                    if args.resume and key in prediction_map:
+                    if (
+                        args.resume
+                        and key in resume_complete_keys
+                    ):
                         continue
 
                     audio_path = _materialize_sample_audio(repo_root, sample, scratch_dir)
