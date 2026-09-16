@@ -20,7 +20,7 @@ Control principle: **agent decides scope, scripts execute.** You (the agent) con
 | `dataset_source_key` | when needed | Key in site policy `datasets.allowed_source_roots` that authorizes the supplied source paths. The resolved key is persisted and passed into the inference container's dataset preparation stage. |
 | `datasets_root` | — | Absolute writable projection root for generated JSONL indexes and metadata. Resolution precedence is this parameter, `SURE_EVAL_DATASETS_ROOT`, `datasets.projection_root` in site policy, an explicit config's `data.datasets`, then the repository development default. It must stay outside forbidden output roots and must not overlap a source root. Raw data is referenced in place and is never copied or moved. |
 | `protocol` | — | `standard_system` (default) follows the approved model's upstream configuration. `strict_core` requires every conservative parameter to be mapped to an MCP argument or explicitly proven not applicable. |
-| `device` | — | `auto \| cpu \| cuda \| cuda:<index>`. Default `auto`; resolved by `scripts/resolve_eval_input.py` and handed to `scripts/infer_entrypoint.py` by `scripts/run_infer.py`. `cuda:<index>` selects the local host GPU by setting `CUDA_VISIBLE_DEVICES=<index>`. |
+| `device` | — | `auto \| cpu \| cuda \| cuda:<index>`. Default `auto`; resolved by `scripts/resolve_eval_input.py` and handed to `scripts/infer_entrypoint.py` by `scripts/run_infer.py`. `cuda:<index>` selects the local host GPU by setting `CUDA_VISIBLE_DEVICES=<index>`; because the process then sees one GPU, model code receives `DEVICE=cuda:0`. The original request and the process-visible device are recorded separately. |
 | `max_samples` | — | Sample cap for bounded validation runs. Omitted or `0` means full dataset. |
 | `execution` | — | `auto \| local`. Both resolve to the approved local runtime: `local_docker` for container bindings, `local_python` for approved Python runtimes. `vc` is not accepted. |
 | `execution_path` | — | Legacy alias: `auto \| local_docker \| local_python`. `local_bash` is normalized to the approved local runtime; arbitrary host inference is forbidden. |
@@ -114,6 +114,14 @@ harness actually sent and where it executed:
 `predictions/<dataset>.jsonl` as model-output evidence only and must not be used
 to infer model hyperparameters.
 
+The compatibility file `predictions/<dataset>.txt` is one `key<TAB>value` record
+per line; its newline is the record separator. Text tasks such as ASR, S2TT,
+classification, SER, GR and SLU replace `\r\n`, `\r` and `\n` with spaces
+before writing that projection and `normalized_prediction`, so evaluation uses
+the single-line value. The original model output remains in the JSONL row's
+`raw_response`. Audio paths and annotation paths are semantic values: a newline
+in one causes prediction generation to fail instead of being rewritten.
+
 `references/sure_benchmark/jsonl/<dataset>.jsonl` is a copy of each selected
 dataset's projection, so `/sure_eval` can score the bundle without the
 projection root.
@@ -183,6 +191,25 @@ the selected runtime; it never falls back to an unapproved host interpreter. The
 bounded smoke pass (the first ten samples of the first dataset, or fewer under
 `max_samples`) is the entrypoint's `smoke` stage: a model that answers nothing
 stops there, before the full pass.
+
+Dataset metadata keeps canonical short language codes such as `zh` and `en`.
+The model wrapper owns any model-specific spelling (for example mapping `zh` to
+`Chinese` for Qwen ASR); the harness records both the dataset language and the
+actual tool arguments so this mapping cannot be mistaken for an evaluation
+language change.
+
+If a generation pass already produced predictions but failed while validating or
+writing the terminal bundle, resume without loading the model again:
+
+```bash
+"$HARNESS_PYTHON_BIN" scripts/run_infer.py \
+  --run-dir <sure_run_dir> \
+  --from-stage validate
+```
+
+`--from-stage` accepts `validate`, `protocol`, `references`, or `finalize`.
+The entrypoint still runs the guards, config, and dataset preparation needed by
+the selected stage, and records the recovery stage in `execution_surface.json`.
 
 ## Gate Checks (enforced by hooks)
 

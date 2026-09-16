@@ -26,6 +26,14 @@ class ModelRuntimeError(RuntimeError):
     """The selected Model Python runtime is missing or invalid."""
 
 
+def _python_child_environment() -> dict[str, str]:
+    """Launch model interpreters without Harness interpreter overrides."""
+    env = os.environ.copy()
+    for key in ("PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE"):
+        env.pop(key, None)
+    return env
+
+
 def runtime_python_relative() -> str:
     return "Scripts/python.exe" if os.name == "nt" else "bin/python"
 
@@ -97,6 +105,7 @@ def _probe(python: Path) -> dict[str, str]:
         text=True,
         check=False,
         timeout=60,
+        env=_python_child_environment(),
     )
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip() or f"exit {completed.returncode}"
@@ -266,9 +275,7 @@ def materialize_runtime(
             uv = _uv_binary(uv_bin)
             cache_dir = root / ".uv-cache"
             cache_dir.mkdir(exist_ok=True)
-            env = os.environ.copy()
-            env.pop("PYTHONHOME", None)
-            env.pop("PYTHONPATH", None)
+            env = _python_child_environment()
             env["UV_CACHE_DIR"] = str(cache_dir)
             _run(
                 [uv, "venv", "--no-project", "--no-python-downloads", "--python", source_probe["base_python"], str(staging)],

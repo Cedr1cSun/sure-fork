@@ -373,8 +373,8 @@ function scopeWithoutBasis(extra: Record<string, unknown> = {}): Record<string, 
 }
 
 // The product tree check_execution_result.py cross-checks for a succeeded run:
-// one non-empty prediction row per dataset, completed status rows, protocol.yaml
-// and the reference projection.
+// one non-empty prediction row per dataset, completed status and validation rows,
+// protocol.yaml and the reference projection.
 function seedInferenceProduct(fx: Fixture): string {
 	const root = join(fx.runDir, "product");
 	mkdirSync(join(root, "predictions"), { recursive: true });
@@ -385,6 +385,11 @@ function seedInferenceProduct(fx: Fixture): string {
 		JSON.stringify({
 			datasets: [{ dataset: DATASET, status: "completed", num_expected_samples: 1, num_generated_samples: 1 }],
 		}),
+		"utf-8",
+	);
+	writeFileSync(
+		join(root, "validation_payload.json"),
+		JSON.stringify({ is_valid: true, results: [{ dataset: DATASET, is_valid: true }] }),
 		"utf-8",
 	);
 	writeFileSync(join(root, "protocol.yaml"), "schema: sure.eval.inference_protocol.v1\n", "utf-8");

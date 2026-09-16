@@ -145,6 +145,34 @@ class RunInferTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def test_physical_cuda_request_is_remapped_to_visible_cuda_zero(self) -> None:
+        env, actual, visible = run_infer._local_device_env("cuda:3")
+        self.assertEqual(visible, "3")
+        self.assertEqual(actual, "cuda:0")
+        self.assertEqual(env["SURE_EVAL_DEVICE_REQUEST"], "cuda:3")
+        self.assertEqual(env["SURE_EVAL_DEVICE_ACTUAL"], "cuda:0")
+        self.assertEqual(env["DEVICE"], "cuda:0")
+
+    def test_resume_stage_is_recorded_and_forwarded_to_the_entrypoint(self) -> None:
+        self.write_inputs(self.container_binding)
+        captured: dict[str, object] = {}
+
+        def build_command(**kwargs: object) -> tuple[list[str], dict[str, str]]:
+            captured.update(kwargs)
+            return [sys.executable, "-c", "pass"], {"image_ref": IMAGE_REF}
+
+        with (
+            patch.object(sys, "argv", ["run_infer.py", "--run-dir", str(self.run_dir), "--from-stage", "validate"]),
+            patch.object(run_infer, "build_local_container_command", side_effect=build_command),
+        ):
+            self.assertEqual(run_infer.main(), 0)
+
+        extra_env = captured["extra_env"]
+        self.assertIsInstance(extra_env, dict)
+        self.assertEqual(extra_env["SURE_EVAL_FROM_STAGE"], "validate")
+        surface = json.loads((self.artifacts / "execution_surface.json").read_text(encoding="utf-8"))
+        self.assertEqual(surface["resolved_inputs"]["from_stage"], "validate")
+
     def run_container(self, command: list[str]) -> tuple[int, dict, dict, dict]:
         with (
             patch.object(sys, "argv", ["run_infer.py", "--run-dir", str(self.run_dir)]),

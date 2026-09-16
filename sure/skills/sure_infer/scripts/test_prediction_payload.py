@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -11,6 +14,86 @@ import generate_predictions_via_server as gp  # noqa: E402
 
 
 class AsrPayloadNormalizationTests(unittest.TestCase):
+    def test_snapshot_writer_keeps_text_and_jsonl_on_the_same_line(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            txt = root / "predictions.txt"
+            structured = root / "predictions.jsonl"
+            gp._write_prediction_snapshots(
+                samples=[{"key": "sample-1"}],
+                prediction_path=txt,
+                structured_prediction_path=structured,
+                prediction_map={"sample-1": "first\nsecond"},
+                structured_map={},
+                canonical_dataset="demo__v1",
+                sample_task="ASR",
+                sample_language="en",
+            )
+            self.assertEqual(txt.read_text(encoding="utf-8"), "sample-1\tfirst second\n")
+            row = json.loads(structured.read_text(encoding="utf-8"))
+            self.assertEqual(row["normalized_prediction"], "first second")
+
+    def test_physical_cuda_request_is_remapped_when_one_card_is_visible(self) -> None:
+        with patch.dict(gp.os.environ, {"CUDA_VISIBLE_DEVICES": "3"}, clear=False):
+            self.assertEqual(gp._process_device("cuda:3"), "cuda:0")
+
+    def test_cuda_request_stays_indexed_when_multiple_cards_are_visible(self) -> None:
+        with patch.dict(gp.os.environ, {"CUDA_VISIBLE_DEVICES": "2,3"}, clear=False):
+            self.assertEqual(gp._process_device("cuda:1"), "cuda:1")
+
+    def test_text_newlines_are_folded_to_spaces_for_single_line_projections(self) -> None:
+        prediction, normalized = gp._normalize_prediction_payload(
+            {"text": "first\r\nsecond\nthird\rfourth"}, task="ASR"
+        )
+        self.assertEqual(prediction, "first second third fourth")
+        self.assertEqual(normalized, {"text": "first second third fourth"})
+
+    def test_audio_path_newlines_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "audio_path cannot contain newline"):
+            gp._normalize_prediction_payload({"audio_path": "generated\nfile.wav"}, task="TTS")
+
+    def test_structured_predictions_keep_json_newlines_escaped(self) -> None:
+        projection, normalized = gp._normalize_prediction_payload(
+            {"detected": True, "keyword": "wake\nword", "score": 0.9}, task="KWS"
+        )
+        self.assertNotIn("\n", projection)
+        self.assertEqual(json.loads(projection)["keyword"], "wake\nword")
+        self.assertEqual(normalized["keyword"], "wake\nword")
+
+    def test_annotation_path_newlines_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "annotation_path cannot contain newline"):
+            gp._normalize_prediction_payload({"annotation_path": "segments\n.json"}, task="SD")
+
+    def test_resume_does_not_fold_a_structured_path_newline_into_a_hit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "predictions.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "key": "sample-1",
+                        "task": "TTS",
+                        "normalized_prediction": "generated\nfile.wav",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            structured = gp._load_existing_structured_predictions(path)
+            self.assertEqual(structured["sample-1"]["normalized_prediction"], "generated\nfile.wav")
+            self.assertNotIn(
+                "sample-1",
+                gp._resume_complete_keys({"sample-1": "generated file.wav"}, structured),
+            )
+
+    def test_resume_skips_only_matching_text_and_structured_rows(self) -> None:
+        predictions = {"complete": "ok", "missing": "old", "mismatch": "text"}
+        structured = {
+            "complete": {"normalized_prediction": "ok"},
+            "missing": {},
+            "mismatch": {"normalized_prediction": "different"},
+        }
+        self.assertEqual(gp._resume_complete_keys(predictions, structured), {"complete"})
+
     def test_single_element_text_list_is_unwrapped(self) -> None:
         prediction, normalized = gp._normalize_prediction_payload(
             {"text": [" 二零二二年冬奥会在北京举行"]}, task="ASR"

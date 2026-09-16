@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import stat
 import subprocess
@@ -11,8 +12,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-
-import json
 
 from evaluation_runtime import (
     EvaluationIdentityUnavailable,
@@ -30,6 +29,7 @@ from evaluation_runtime import (
     evaluation_runtime_from_eval_input,
     main,
 )
+from resolve_evaluation_engine import git_environment
 
 
 class EvaluationRuntimeTests(unittest.TestCase):
@@ -126,9 +126,15 @@ class EvaluationRuntimeTests(unittest.TestCase):
             {
                 "SURE_HARNESS_RUNTIME_ROOT": harness_root,
                 "LD_LIBRARY_PATH": f"{harness_root}/base/lib:/usr/local/cuda/lib64:/opt/model/lib",
+                "PYTHONHOME": f"{harness_root}/base",
+                "PYTHONPATH": f"{harness_root}/site-packages:/opt/model-runtime",
+                "PYTHONEXECUTABLE": f"{harness_root}/base/bin/python",
             }
         )
         self.assertEqual(env["LD_LIBRARY_PATH"], "/usr/local/cuda/lib64:/opt/model/lib")
+        self.assertNotIn("PYTHONHOME", env)
+        self.assertNotIn("PYTHONPATH", env)
+        self.assertNotIn("PYTHONEXECUTABLE", env)
 
     def test_import_probe_runs_from_the_engine_root(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
@@ -210,6 +216,29 @@ class EngineIdentityAbsenceTests(unittest.TestCase):
             engine.mkdir()
             subprocess.run(["git", "init", "--quiet", str(engine)], check=False, capture_output=True)
             self.assertTrue(_engine_has_repository(engine))
+
+    def test_a_nested_directory_never_uses_a_parent_repository_head(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            parent = Path(raw_root) / "checkout"
+            engine = parent / "sure-evaluation"
+            engine.mkdir(parents=True)
+            subprocess.run(["git", "init", "--quiet", str(parent)], check=False, capture_output=True)
+            self.assertFalse(_engine_has_repository(engine))
+            self.assertEqual(_engine_commit(engine), "")
+
+    def test_git_environment_cannot_redirect_repository_identity(self) -> None:
+        environment = git_environment(
+            {
+                "GIT_DIR": "/tmp/other/.git",
+                "GIT_WORK_TREE": "/tmp/other",
+                "GIT_INDEX_FILE": "/tmp/other/index",
+                "GIT_CONFIG_GLOBAL": "/tmp/other/config",
+                "PATH": "/usr/bin",
+            }
+        )
+        for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_CONFIG_GLOBAL"):
+            self.assertNotIn(key, environment)
+        self.assertEqual(environment["GIT_CONFIG_NOSYSTEM"], "1")
 
     def test_a_repository_with_no_readable_head_is_an_error_not_an_absence(self) -> None:
         # git ran, the repository is there, and it still would not say. That is

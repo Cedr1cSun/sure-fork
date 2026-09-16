@@ -215,7 +215,11 @@ def _local_device_env(device_request: str) -> tuple[dict[str, str], str, str | N
     match = re.fullmatch(r"cuda:(\d+)", lowered)
     if match:
         env["CUDA_VISIBLE_DEVICES"] = match.group(1)
-        env["DEVICE"] = request
+        # Once CUDA_VISIBLE_DEVICES narrows the process to the requested
+        # physical card, torch renumbers that card as cuda:0. Keep the user's
+        # physical request in SURE_EVAL_DEVICE_REQUEST and pass the process-
+        # visible address to every child process.
+        env["DEVICE"] = "cuda:0"
         env["SURE_EVAL_DEVICE_ACTUAL"] = "cuda:0"
         return env, "cuda:0", match.group(1)
     if lowered == "cuda":
@@ -243,6 +247,7 @@ def _build_surface(
     cuda_visible: str | None,
     input_resolved_path: Path,
     read_files: list[Path],
+    from_stage: str | None = None,
 ) -> dict[str, Any]:
     runtime = eval_input.get("runtime") if isinstance(eval_input.get("runtime"), dict) else {}
     user_input = eval_input.get("user_input") if isinstance(eval_input.get("user_input"), dict) else {}
@@ -270,6 +275,8 @@ def _build_surface(
     ).strip()
     if dataset_source_key:
         env["SURE_DATASET_SOURCE_ROOT"] = dataset_source_key
+    if from_stage:
+        env["SURE_EVAL_FROM_STAGE"] = from_stage
     return {
         "run_id": run_id,
         "timestamp": _utc_now(),
@@ -310,6 +317,7 @@ def _build_surface(
             "execution_path": execution["path_planned"],
             "device": device_request,
             "tool_name": tool_name,
+            "from_stage": from_stage or "",
         },
         "expected_outputs": {
             "prepare_summary": f"{product_dir}/prepare_summary.json",
@@ -388,6 +396,11 @@ def main() -> int:
     parser.add_argument("--run-dir", required=True, help="SURE skill run directory, e.g. .sure/runs/<run_id>")
     parser.add_argument("--execution-output", help="Path to execution_result.json")
     parser.add_argument("--cwd", help="Repository root used as the working directory")
+    parser.add_argument(
+        "--from-stage",
+        choices=("validate", "protocol", "references", "finalize"),
+        help="Resume an existing prediction product without rerunning model generation.",
+    )
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir).expanduser().resolve()
@@ -422,6 +435,7 @@ def main() -> int:
         device_request=device_request,
         device_actual=device_actual,
         cuda_visible=cuda_visible,
+        from_stage=args.from_stage,
         input_resolved_path=eval_input_path,
         read_files=[eval_input_path, decision_path],
     )
@@ -443,6 +457,8 @@ def main() -> int:
         "SURE_EVAL_EXECUTION_REQUESTED": execution["requested"],
         "SURE_EVAL_EXECUTION_JOB_ID": f"local:{host}:{run_dir.name}",
     }
+    if args.from_stage:
+        extra_env["SURE_EVAL_FROM_STAGE"] = args.from_stage
     if execution_path == "local_python":
         command, process_env, _launch = build_local_python_command(
             surface=surface,

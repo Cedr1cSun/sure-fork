@@ -26,7 +26,7 @@ sys.path.insert(0, str(HARNESS_ROOT))
 
 from import_prediction_source import import_predictions
 from generate_report_snapshot import build_snapshot
-from resolve_evaluation_engine import resolve_engine_root
+from resolve_evaluation_engine import git_environment, git_repo_root, resolve_engine_root
 from resolve_prediction_source import (
     APPROVED_MODELS_ROOT,
     APPROVED_RESULTS_ROOT,
@@ -651,7 +651,13 @@ def _harness_config(
         if not path.exists():
             raise FileNotFoundError(path)
         return path.resolve()
-    base_config = HARNESS_ROOT / "sure" / "external" / "sure-evaluation" / "config" / "default.yaml"
+    engine_hint = os.environ.get("SURE_EVALUATION_HOME") or ""
+    resolved_engine = resolve_engine_root(engine_hint or None)
+    base_config = (
+        resolved_engine[1] / "config" / "default.yaml"
+        if resolved_engine is not None
+        else HARNESS_ROOT / "sure" / "external" / "sure-evaluation" / "config" / "default.yaml"
+    )
     datasets_root = _approved_reference_datasets_root(
         source,
         approved_models_root=approved_models_root,
@@ -682,11 +688,28 @@ def _harness_config(
 def _engine_info(engine_root: str | None) -> dict[str, Any]:
     resolved = resolve_engine_root(engine_root)
     if resolved is None:
-        raise FileNotFoundError("the harness-pinned sure-evaluation engine is unavailable")
+        raise FileNotFoundError(
+            "the harness-pinned sure-evaluation engine is unavailable; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
     source, root = resolved
+    try:
+        own_repo = git_repo_root(root)
+    except OSError as exc:
+        raise RuntimeError(f"cannot inspect pinned evaluation engine repository: {exc}") from exc
+    if own_repo is None:
+        raise RuntimeError(
+            "the evaluation engine checkout is not its own git repository; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
     git_prefix = ["git", "-c", f"safe.directory={root}"]
     completed = subprocess.run(
-        [*git_prefix, "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False
+        [*git_prefix, "rev-parse", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=git_environment(),
     )
     if completed.returncode != 0:
         raise RuntimeError(
@@ -706,6 +729,7 @@ def _engine_info(engine_root: str | None) -> dict[str, Any]:
         capture_output=True,
         text=True,
         check=False,
+        env=git_environment(),
     )
     return {
         "source": source,
@@ -768,6 +792,46 @@ def _summary(payload: dict[str, Any]) -> dict[str, Any]:
     return {"num_results": len(rows), "comparisons": comparisons}
 
 
+def _pipeline_hints(engine_root: Path, task: str, language: str) -> list[str]:
+    """List catalog routes that can be used to repair an unsupported metric."""
+    catalog = engine_root / "docs" / "pipeline_catalog.jsonl"
+    if not catalog.is_file():
+        return []
+    normalized_task = task.lower().replace("-", "_")
+    rows: list[tuple[str, str]] = []
+    try:
+        lines = catalog.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        aliases = {
+            str(row.get("task") or "").lower().replace("-", "_"),
+            str(row.get("task_alias") or "").lower().replace("-", "_"),
+        }
+        if normalized_task not in aliases:
+            continue
+        pipeline_id = str(row.get("pipeline_id") or "").strip()
+        if not pipeline_id:
+            continue
+        route_language = str(row.get("language") or "").strip().lower()
+        rows.append((pipeline_id, route_language))
+    matching = [
+        pipeline
+        for pipeline, route_language in rows
+        if not route_language or route_language == language
+    ]
+    selected = matching or [f"{pipeline} (language={route_language or 'any'})" for pipeline, route_language in rows]
+    return list(dict.fromkeys(selected))[:8]
+
+
 def _pipeline_ids_for_metrics(metrics: list[str], *, engine_root: Path, imported: list[dict[str, Any]]) -> list[str]:
     """Resolve --metric to the exact default pipeline ids evaluate_predictions.py would run for it."""
     from evaluate_predictions import _describe_external_pipeline, _effective_audio_task, _metric_task_hint, _summarize_bridge_error
@@ -798,8 +862,14 @@ def _pipeline_ids_for_metrics(metrics: list[str], *, engine_root: Path, imported
             resolved.append(pipeline_id)
             if pipeline_id not in pipeline_ids:
                 pipeline_ids.append(pipeline_id)
-        if not resolved:
-            raise ValueError(f"no requested metric resolves to a pipeline for {dataset} ({task}/{language}): {failures}")
+        if failures:
+            hints = _pipeline_hints(engine_root, task, language)
+            if hints:
+                failures.append("available pipeline ids: " + ", ".join(hints))
+            raise ValueError(
+                f"requested metrics did not all resolve for {dataset} ({task}/{language}); "
+                f"resolved={resolved or 'none'} failures={failures}"
+            )
     return pipeline_ids
 
 
@@ -871,7 +941,14 @@ def run_eval(
         ) from exc
     run_dir = invocation_run_dir / "scratch"
     run_dir.mkdir(parents=True, exist_ok=True)
-    engine_root = (evaluation_engine_root or EVALUATION_ENGINE_ROOT).expanduser().resolve()
+    engine_hint = str(evaluation_engine_root or os.environ.get("SURE_EVALUATION_HOME") or EVALUATION_ENGINE_ROOT)
+    resolved_engine = resolve_engine_root(engine_hint)
+    if resolved_engine is None:
+        raise FileNotFoundError(
+            "the harness-pinned sure-evaluation engine is unavailable; "
+            "run git submodule update --init sure/external/sure-evaluation"
+        )
+    engine_root = resolved_engine[1]
 
     config_path = _harness_config(
         run_dir,

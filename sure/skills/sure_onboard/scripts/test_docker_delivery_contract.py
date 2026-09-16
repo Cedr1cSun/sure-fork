@@ -447,6 +447,19 @@ class DockerDeliveryContractTests(unittest.TestCase):
 
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep\n")
 
+    def test_finalizer_rejects_a_directory_level_weight_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            model_dir = root / "sure" / "models" / "demo"
+            outside = root / "weights"
+            model_dir.mkdir(parents=True)
+            outside.mkdir()
+            (outside / "model.safetensors").write_bytes(b"weights")
+            (model_dir / "checkpoints").symlink_to(outside, target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "file-level symlinks"):
+                ensure_safe_bundle_targets(model_dir, {"model_dir": str(model_dir)})
+
     def test_finalized_gate_rejects_deployment_not_later_than_verdict(self) -> None:
         output = self.run_artifacts / "deployment_ready.json"
         deployment = finalize(self.run_dir, output)

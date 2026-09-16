@@ -59,13 +59,66 @@ def resolve_engine_root(explicit: str | None = None) -> tuple[str, Path] | None:
     return _resolve(explicit)
 
 
+def git_environment(parent: dict[str, str] | None = None) -> dict[str, str]:
+    """Remove environment overrides that can redirect git outside a checkout."""
+    env = dict(os.environ if parent is None else parent)
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        env.pop(key, None)
+    for key in list(env):
+        if key.startswith("GIT_CONFIG_"):
+            env.pop(key, None)
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
+def git_repo_root(root: Path) -> Path | None:
+    """Return ``root`` when git resolves it as its own worktree.
+
+    ``git -C <nested-directory>`` otherwise walks up into the harness
+    repository. That makes an uninitialised or copied evaluation checkout look
+    as if it had the parent repository's HEAD, which is invalid provenance.
+    """
+    root = root.expanduser().resolve()
+    completed = subprocess.run(
+        ["git", "-c", f"safe.directory={root}", "rev-parse", "--show-toplevel"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=git_environment(),
+        )
+    if completed.returncode != 0:
+        return None
+    reported = completed.stdout.strip()
+    if not reported:
+        return None
+    try:
+        reported_root = Path(reported).resolve()
+    except OSError:
+        return None
+    return root if reported_root == root else None
+
+
 def _git_info(root: Path) -> dict[str, Any]:
-    git_dir = root / ".git"
-    if not git_dir.exists():
+    try:
+        if git_repo_root(root) is None:
+            return {"is_git": False}
+    except OSError as exc:
+        return {"is_git": True, "git_available": False, "error": str(exc)}
+    if not (root / ".git").exists():
+        # A submodule worktree normally has a .git file. Keep this check
+        # explicit so a parent repository can never be mistaken for one.
         return {"is_git": False}
     result: dict[str, Any] = {"is_git": True}
     try:
-        subprocess.run(["git", "--version"], cwd=root, capture_output=True, text=True, check=False)
+        subprocess.run(
+            ["git", "--version"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=git_environment(),
+        )
     except OSError as exc:
         return {"is_git": True, "git_available": False, "error": str(exc)}
     result["git_available"] = True
@@ -73,15 +126,29 @@ def _git_info(root: Path) -> dict[str, Any]:
         "commit": ["git", "rev-parse", "HEAD"],
         "branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
     }.items():
-        completed = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
+        completed = subprocess.run(
+            command,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=git_environment(),
+        )
         result[key] = completed.stdout.strip() if completed.returncode == 0 else None
-    dirty = subprocess.run(["git", "status", "--short"], cwd=root, capture_output=True, text=True, check=False)
+    dirty = subprocess.run(
+        ["git", "status", "--short"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=git_environment(),
+    )
     result["dirty"] = bool(dirty.stdout.strip()) if dirty.returncode == 0 else None
     return result
 
 
 def _smoke_describe(root: Path, task: str, language: str, metric: str) -> dict[str, Any]:
-    env = os.environ.copy()
+    env = git_environment()
     src = str(root / "src")
     env["PYTHONPATH"] = f"{src}:{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else src
     code = """

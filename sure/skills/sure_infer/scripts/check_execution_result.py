@@ -82,6 +82,16 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
         for row in status.get("datasets", [])
         if isinstance(row, dict) and row.get("dataset")
     }
+    validation = _read_json(product_dir / "validation_payload.json")
+    if not validation:
+        errors.append(f"validation_payload.json is missing or invalid under {product_dir}")
+    elif validation.get("is_valid") is not True:
+        errors.append("validation_payload.json must declare is_valid=true for a succeeded execution")
+    validation_rows = {
+        str(row.get("dataset")): row
+        for row in validation.get("results", [])
+        if isinstance(row, dict) and row.get("dataset")
+    } if isinstance(validation, dict) else {}
     if not (product_dir / "protocol.yaml").is_file():
         errors.append(f"protocol.yaml is missing under {product_dir}")
     for row in rows:
@@ -99,6 +109,11 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             errors.append(f"prediction_generation_status.json has no entry for {name}")
         elif dataset_status.get("status") != "completed":
             errors.append(f"prediction_generation_status.json marks {name} as {dataset_status.get('status')!r}, not completed")
+        validation_row = validation_rows.get(name)
+        if validation_row is None:
+            errors.append(f"validation_payload.json has no result for {name}")
+        elif validation_row.get("is_valid") is not True:
+            errors.append(f"validation_payload.json marks {name} as invalid")
         if not (product_dir / "references" / "sure_benchmark" / "jsonl" / f"{name}.jsonl").is_file():
             errors.append(f"references/sure_benchmark/jsonl/{name}.jsonl is missing under {product_dir}")
     return errors
