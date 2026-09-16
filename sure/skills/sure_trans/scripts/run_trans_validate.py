@@ -446,7 +446,6 @@ def run_vc_validation(
     for key, value in (data.get("env") or {}).items():
         if isinstance(key, str) and isinstance(value, (str, int, float, bool)):
             env[key] = str(value)
-    env = model_child_env(env)
     env["SURE_DEVICE"] = "cuda"
     env["DEVICE"] = "cuda"
     partition, gpus, memory_gb, cpus = vc_resources(resolved)

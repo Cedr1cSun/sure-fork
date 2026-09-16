@@ -1658,6 +1658,49 @@ class TransScriptsTest(unittest.TestCase):
             self.assertNotIn("PYTHONHOME", child_env)
             self.assertNotIn("PYTHONPATH", child_env)
 
+    def test_vc_validation_keeps_model_pythonpath_from_run_command(self) -> None:
+        # The vc job env is parsed from the artifact's own docker command; there
+        # is no harness interpreter state in it, only the model's declared paths.
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary)
+            artifacts = run_dir / "artifacts"
+            artifacts.mkdir(parents=True)
+            data = {
+                "run_command": [
+                    "docker", "run", "-e", "PYTHONPATH=/opt/model/src", "--entrypoint", "python", "img", "validate.py",
+                ],
+                "env": {"MODEL_FLAG": "enabled"},
+            }
+            job = mock.Mock(
+                exit_code=0,
+                stdout="",
+                stderr="",
+                job_id="job-1",
+                submit_command=["vc", "submit"],
+                timed_out=False,
+                log_dir=artifacts / "vc_logs" / "import",
+                vc_diagnostics="",
+            )
+            with (
+                mock.patch.object(
+                    run_trans_validate, "ensure_validation_image", return_value=("registry/demo:0.1.0", None, None)
+                ),
+                mock.patch.object(run_trans_validate, "prepare_container_outputs"),
+                mock.patch.object(run_trans_validate, "vc_resources", return_value=("gpu", 1, 32, 4)),
+                mock.patch.object(run_trans_validate, "model_payload_bytes", return_value=0),
+                mock.patch.object(run_trans_validate, "gate_budget_seconds", return_value=0.0),
+                mock.patch.object(run_trans_validate, "run_vc_job", return_value=job) as runner,
+            ):
+                exit_code, extra, _ = run_trans_validate.run_vc_validation(
+                    run_dir, {"model_name": "demo"}, data, "import", artifacts, timeout=60
+                )
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(extra["execution_surface"], "vc")
+            child_env = runner.call_args.kwargs["env"]
+            self.assertEqual(child_env["PYTHONPATH"], "/opt/model/src")
+            self.assertEqual(child_env["MODEL_FLAG"], "enabled")
+            self.assertEqual(child_env["DEVICE"], "cuda")
+
     def test_gate_error_carries_the_reason_the_container_recorded(self) -> None:
         """A failed stage leaves its reason in a file, never on stdout.
 
