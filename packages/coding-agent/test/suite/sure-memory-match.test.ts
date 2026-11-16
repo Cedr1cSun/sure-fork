@@ -523,6 +523,18 @@ describe("memory match: applyRecallBudget and buildMemoryBlock", () => {
 		);
 	});
 
+	it("marks a stale entry after the title, so a cut never takes the path", () => {
+		// A confirmed entry can still be stale: checked_at passed the task's window and the
+		// fact was not re-verified. The status tier does not say that, and the agent is the
+		// one deciding whether to trust it.
+		const fresh = entry({ entry_id: "sure_onboard/a" });
+		const stale = { entry: { ...fresh, stale: true }, hitLength: 1 };
+		expect(renderEntryLine(stale, undefined)).toBe(
+			"- [confirmed] sure_onboard/a (sure/skills/sure_onboard/references/memory/bad_cases/a.md): Title of a [stale]",
+		);
+		expect(renderEntryLine({ entry: fresh, hitLength: 1 }, undefined)).not.toContain("[stale]");
+	});
+
 	it("drops an entry path that is not repo-relative, and the parenthesis with it", () => {
 		// index.py's _rel() falls back to an absolute posix path whenever relative_to(repo_root)
 		// raises, and resolve() follows symlinks — the normal shape when sure/memory or a skill's

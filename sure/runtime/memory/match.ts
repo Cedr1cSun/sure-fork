@@ -513,6 +513,12 @@ export function displayPath(path: string): string {
  * The path comes before the title so a per-entry cut only ever shortens the title; the agent
  * needs the path to read the entry (that read is what §8.1 calls activation). A path that is
  * not repo-relative is dropped, and with it the parenthesis when nothing is left to show.
+ *
+ * A stale entry carries a trailing " [stale]": `checked_at` passed its task's window and the
+ * fact has not been re-verified, which is the one piece of provenance the status tier does
+ * not already express (a confirmed entry can be stale). It sits after the title so the cut
+ * never takes the path, and drops off first when the line is too long — a truncated warning
+ * is better than a truncated path.
  */
 export function renderEntryLine(match: MemoryMatch, maxChars: number | undefined): string {
 	const entry = match.entry;
@@ -526,7 +532,8 @@ export function renderEntryLine(match: MemoryMatch, maxChars: number | undefined
 		parts.push(`pending revision: ${revision}`);
 	}
 	const where = parts.length > 0 ? ` (${parts.join("; ")})` : "";
-	const line = `- [${entry.status}] ${entry.entry_id}${where}: ${oneLine(entry.title, entry.entry_id)}`;
+	const staleMark = entry.stale ? " [stale]" : "";
+	const line = `- [${entry.status}] ${entry.entry_id}${where}: ${oneLine(entry.title, entry.entry_id)}${staleMark}`;
 	return maxChars === undefined ? line : truncateLine(line, maxChars);
 }
 
