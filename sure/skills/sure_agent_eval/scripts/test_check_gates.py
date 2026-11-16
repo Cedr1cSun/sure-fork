@@ -287,6 +287,34 @@ class CheckAgentExecutionTests(GateTestCase):
         self.write_enhanced_evidence(f"utt0\t{first}\nutt1\t{second}\n")
         self.assertEqual(self.check(make_execution(self.product_dir)), [])
 
+    def test_rejects_enhanced_evidence_whose_digest_does_not_match(self) -> None:
+        # A path that still resolves is not enough: the digest is what ties the row to the
+        # bytes the stage produced, so a replaced or truncated file is caught here.
+        self.write_audio_stage()
+        directory = self.product_dir / "enhanced" / "denoise"
+        directory.mkdir(parents=True, exist_ok=True)
+        first = directory / "utt0.wav"
+        second = directory / "utt1.wav"
+        first.write_bytes(b"RIFF")
+        second.write_bytes(b"RIFF")
+        self.write_enhanced_evidence(f"utt0\t{first}\t{'0' * 64}\nutt1\t{second}\t{'0' * 64}\n")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("sha256 does not match" in error for error in errors), errors)
+
+    def test_accepts_enhanced_evidence_with_matching_digests(self) -> None:
+        self.write_audio_stage()
+        directory = self.product_dir / "enhanced" / "denoise"
+        directory.mkdir(parents=True, exist_ok=True)
+        first = directory / "utt0.wav"
+        second = directory / "utt1.wav"
+        first.write_bytes(b"RIFF")
+        second.write_bytes(b"RIFF")
+        self.write_enhanced_evidence(
+            f"utt0\t{first}\t{check_agent_execution._sha256(first)}\n"
+            f"utt1\t{second}\t{check_agent_execution._sha256(second)}\n"
+        )
+        self.assertEqual(self.check(make_execution(self.product_dir)), [])
+
     def test_rejects_a_manifest_sha256_that_the_prediction_file_does_not_back(self) -> None:
         write_json(
             self.product_dir / "predictions" / "manifest.json",

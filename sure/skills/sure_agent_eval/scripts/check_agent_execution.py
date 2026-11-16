@@ -96,14 +96,21 @@ def _enhanced_evidence_errors(
             if not line.strip():
                 continue
             parts = line.split("\t")
-            if len(parts) != 2:
-                errors.append(f"{dataset}: {relative}:{number} must be key<TAB>absolute audio path")
+            if len(parts) not in (2, 3):
+                errors.append(f"{dataset}: {relative}:{number} must be key<TAB>absolute audio path[<TAB>sha256]")
                 continue
-            key, audio = parts
+            key, audio = parts[0], parts[1]
             keys.add(key)
             resolved = Path(audio)
             if not resolved.is_absolute() or not resolved.is_file():
                 errors.append(f"{dataset}: {relative}:{number} points at a missing or relative audio path: {audio}")
+                continue
+            # A row written before the digest column existed carries two fields and is
+            # accepted on the path alone: that is all it can support, and rejecting it would
+            # break every bundle produced by an earlier release. New rows carry the digest,
+            # so the file the row names is provably the file that stage produced.
+            if len(parts) == 3 and parts[2] != _sha256(resolved):
+                errors.append(f"{dataset}: {relative}:{number} sha256 does not match the audio it names")
         if len(keys) != expected:
             errors.append(f"{dataset}: {relative} carries evidence for {len(keys)} sample(s), expected {expected}")
     return errors
