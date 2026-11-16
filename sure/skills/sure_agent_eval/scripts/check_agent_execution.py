@@ -55,6 +55,60 @@ def _nonempty_lines(path: Path) -> int:
         return sum(1 for line in handle if line.strip())
 
 
+# Same rule as agent_runner._stage_output_modality, repeated here so the gate keeps its
+# stdlib-only import surface. The runner records output_modality in the resolved spec; an
+# older plan without it falls back to mode plus task.
+AUDIO_OUTPUT_TASKS = {"SE", "SPEECH_ENHANCEMENT"}
+
+
+def _stage_output_modality(stage: dict[str, Any]) -> str:
+    recorded = str(stage.get("output_modality") or "").strip().lower()
+    if recorded in ("audio", "text"):
+        return recorded
+    task = str(stage.get("task") or "").strip().upper().replace("-", "_").replace(" ", "_")
+    return "audio" if stage.get("mode") == "mcp_tool" and task in AUDIO_OUTPUT_TASKS else "text"
+
+
+def _enhanced_evidence_errors(
+    product_dir: Path,
+    stages: list[Any],
+    dataset: str,
+    expected: int,
+) -> list[str]:
+    """Evidence for every speech-enhancement stage: present, complete, still on disk.
+
+    agent_runner writes one `key<TAB>path` row per sample it chained forward. Nothing used to
+    read these files: a stage could produce no evidence, half of it, or point at audio that a
+    later run deleted, and the gate still reported a clean run.
+    """
+    errors: list[str] = []
+    for stage in stages:
+        if not isinstance(stage, dict) or _stage_output_modality(stage) != "audio":
+            continue
+        stage_id = str(stage.get("id") or "")
+        evidence = product_dir / "enhanced" / stage_id / f"{dataset}.tsv"
+        relative = evidence.relative_to(product_dir).as_posix()
+        if not evidence.is_file():
+            errors.append(f"{dataset}: speech-enhancement stage {stage_id!r} has no evidence file {relative}")
+            continue
+        keys: set[str] = set()
+        for number, line in enumerate(evidence.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) != 2:
+                errors.append(f"{dataset}: {relative}:{number} must be key<TAB>absolute audio path")
+                continue
+            key, audio = parts
+            keys.add(key)
+            resolved = Path(audio)
+            if not resolved.is_absolute() or not resolved.is_file():
+                errors.append(f"{dataset}: {relative}:{number} points at a missing or relative audio path: {audio}")
+        if len(keys) != expected:
+            errors.append(f"{dataset}: {relative} carries evidence for {len(keys)} sample(s), expected {expected}")
+    return errors
+
+
 def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
     result = _read_json(result_path)
     if result is None:
@@ -138,6 +192,7 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             errors.append(f"{dataset}: missing reference projection {reference}")
         elif _nonempty_lines(reference) < expected:
             errors.append(f"{dataset}: reference projection carries fewer than {expected} rows")
+        errors.extend(_enhanced_evidence_errors(product_dir, spec.get("stages") or [], dataset, expected))
     if not (product_dir / "protocol.yaml").is_file():
         errors.append(f"protocol.yaml missing from product directory {product_dir}")
     if not (product_dir / "predictions" / "manifest.json").is_file():
