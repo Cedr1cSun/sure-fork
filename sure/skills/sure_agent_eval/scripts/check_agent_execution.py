@@ -55,6 +55,35 @@ def _nonempty_lines(path: Path) -> int:
         return sum(1 for line in handle if line.strip())
 
 
+def _prediction_keys(path: Path) -> set[str]:
+    """The keys of the rows that carry an answer: `key<TAB>text`."""
+    keys: set[str] = set()
+    if not path.is_file():
+        return keys
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) > 1 and parts[1].strip():
+            keys.add(parts[0])
+    return keys
+
+
+def _reference_keys(path: Path) -> set[str]:
+    """The keys a reference projection expects. Rows without a usable key are skipped."""
+    keys: set[str] = set()
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            key = row.get("key")
+            if isinstance(key, str) and key:
+                keys.add(key)
+    return keys
+
+
 def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
     result = _read_json(result_path)
     if result is None:
@@ -138,6 +167,17 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             errors.append(f"{dataset}: missing reference projection {reference}")
         elif _nonempty_lines(reference) < expected:
             errors.append(f"{dataset}: reference projection carries fewer than {expected} rows")
+        else:
+            # A row count can match while the keys do not: the file can carry the right
+            # number of answers under keys the reference never names. /sure_eval reports
+            # that only after it has started, so the cheapest place to catch it is here.
+            predicted = _prediction_keys(prediction_file)
+            missing = sorted(_reference_keys(reference) - predicted)
+            if missing:
+                listed = ", ".join(missing[:3]) + (f" (+{len(missing) - 3} more)" if len(missing) > 3 else "")
+                errors.append(
+                    f"{dataset}: predictions/{dataset}.txt has no row for {len(missing)} reference key(s): {listed}"
+                )
     if not (product_dir / "protocol.yaml").is_file():
         errors.append(f"protocol.yaml missing from product directory {product_dir}")
     if not (product_dir / "predictions" / "manifest.json").is_file():
