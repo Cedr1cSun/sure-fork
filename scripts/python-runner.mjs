@@ -10,6 +10,16 @@
  * (the public-export tree has no root project of its own).
  */
 
+/**
+ * Packages every probe needs when uv is the interpreter.
+ *
+ * The probes import `sure_eval`: its package `__init__` pulls structlog and rich, and
+ * its config imports pydantic. pyyaml alone reached the probe and then died with
+ * `ModuleNotFoundError: No module named 'pydantic'`, which the public-export path never
+ * showed because it skips these probes entirely.
+ */
+const PROBE_DEPENDENCIES = ["pyyaml", "pydantic", "structlog", "rich"];
+
 export function pythonInvocation(args, { harnessOnly = false } = {}) {
 	const harness = process.env.HARNESS_PYTHON_BIN || process.env.SURE_EVAL_HARNESS_PYTHON_BIN;
 	if (harness) {
@@ -18,5 +28,16 @@ export function pythonInvocation(args, { harnessOnly = false } = {}) {
 	if (harnessOnly) {
 		return null;
 	}
-	return ["uv", ["run", "--no-project", "--python", "3.11", "--with", "pyyaml", "python", ...args]];
+	return [
+		"uv",
+		[
+			"run",
+			"--no-project",
+			"--python",
+			"3.11",
+			...PROBE_DEPENDENCIES.flatMap((dependency) => ["--with", dependency]),
+			"python",
+			...args,
+		],
+	];
 }
