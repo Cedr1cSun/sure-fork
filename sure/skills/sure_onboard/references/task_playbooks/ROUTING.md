@@ -39,6 +39,7 @@ fallback to reading all task playbooks.
 | `TTS`, text-to-speech, speech synthesis | `task_playbooks/TTS.md` | `ASR.md`, `VC.md`, `KWS.md` |
 | `TTA`, text-to-audio, audio generation, sound effect generation | `task_playbooks/TTA.md` | `ASR.md`, `TTS.md`, `VC.md` |
 | `RIR`, room impulse response estimation, blind RIR estimation | `task_playbooks/RIR.md` | `ASR.md`, `TTS.md`, `VC.md` |
+| `DOA`, direction of arrival, sound source localization | `task_playbooks/DOA.md` | `ASR.md`, `TTS.md`, `VC.md` |
 | `VC`, voice conversion, timbre conversion, speech conversion | `task_playbooks/VC.md` | `ASR.md`, `TTS.md`, `KWS.md` |
 | `KWS`, keyword spotting, wake word detection | `task_playbooks/KWS.md` | `ASR.md`, `TTS.md`, `VC.md` |
 
