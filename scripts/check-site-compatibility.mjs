@@ -8,7 +8,23 @@ import { legacyValueDifferences, schemaCompatibilityDifferences } from "./site-c
 import { pythonInvocation } from "./python-runner.mjs";
 
 function run(command, args, options = {}) {
-	return spawnSync(command, args, { encoding: "utf8", ...options });
+	const completed = spawnSync(command, args, { encoding: "utf8", ...options });
+	// A failed spawn leaves status null and stdout/stderr null, and every caller
+	// below reads one of them: report it as an ordinary non-zero result instead
+	// of dying with a TypeError. Same shape as check-site-boundary.mjs normalises.
+	if (completed.error) {
+		const cause =
+			completed.error.code === "ENOENT"
+				? `${command} is required for check:site-compatibility but could not be started (${completed.error.message}); install it and retry`
+				: `${command} did not run to completion (${completed.error.message}); its output below is partial`;
+		return {
+			...completed,
+			status: 127,
+			stdout: completed.stdout ?? "",
+			stderr: [completed.stderr, cause].filter(Boolean).join("\n"),
+		};
+	}
+	return completed;
 }
 
 function git(args) {
