@@ -118,25 +118,28 @@ export class SureHookRunner {
 
 		const timeoutMs = hookTimeoutMs();
 		try {
-			const loaded = await this.jiti.import(hookPath);
-			const moduleValue = loaded as Record<string, unknown>;
-			const handlerName = declaration.handler ?? point;
-			const handler =
-				(typeof moduleValue[handlerName] === "function" ? moduleValue[handlerName] : undefined) ??
-				(typeof moduleValue.default === "function" ? moduleValue.default : undefined);
-			if (!handler) {
-				return {
-					ok: false,
-					message: `Hook handler not found: ${handlerName}`,
-					repair: `Export a function named "${handlerName}" from ${declaration.module}, or provide a default export.`,
-				};
-			}
-
+			// The deadline covers loading the hook module too: top-level code that never
+			// settles must not block the run any longer than a hanging handler does.
 			const value = await withDeadline(
-				(handler as HookFunction)({
-					...context,
-					point,
-				}),
+				(async (): Promise<unknown> => {
+					const loaded = await this.jiti.import(hookPath);
+					const moduleValue = loaded as Record<string, unknown>;
+					const handlerName = declaration.handler ?? point;
+					const handler =
+						(typeof moduleValue[handlerName] === "function" ? moduleValue[handlerName] : undefined) ??
+						(typeof moduleValue.default === "function" ? moduleValue.default : undefined);
+					if (!handler) {
+						return {
+							ok: false,
+							message: `Hook handler not found: ${handlerName}`,
+							repair: `Export a function named "${handlerName}" from ${declaration.module}, or provide a default export.`,
+						};
+					}
+					return (handler as HookFunction)({
+						...context,
+						point,
+					});
+				})(),
 				timeoutMs,
 			);
 			return normalizeHookResult(value);

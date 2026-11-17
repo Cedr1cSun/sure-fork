@@ -36,12 +36,12 @@ describe("SureHookRunner deadline", () => {
 	// A hanging pre_tool_call used to block the run with no way out. The deadline turns it
 	// into an ordinary gate failure; it does not kill the handler (issue #172).
 	test("a hook that never returns fails the gate instead of blocking the run", async () => {
-		vi.stubEnv("SURE_HOOK_TIMEOUT_MS", "50");
+		vi.stubEnv("SURE_HOOK_TIMEOUT_MS", "500");
 		const runner = new SureHookRunner(
 			packageWithHook(
 				dir,
 				`export async function preFinish() {
-					await new Promise((resolve) => setTimeout(resolve, 300));
+					await new Promise(() => {});
 					return { ok: true };
 				}`,
 			),
@@ -50,8 +50,26 @@ describe("SureHookRunner deadline", () => {
 		const result = await runner.run("pre_finish", {} as never);
 
 		expect(result.ok).toBe(false);
-		expect(result.message).toContain("did not return within 50ms");
+		expect(result.message).toContain("did not return within 500ms");
 		expect(result.repair).toContain("SURE_HOOK_TIMEOUT_MS");
+	});
+
+	// The deadline covers loading the hook module, not only calling its handler: top-level
+	// code that never settles used to block the run exactly like a hanging handler.
+	test("a hook module that hangs at import fails the gate instead of blocking the run", async () => {
+		vi.stubEnv("SURE_HOOK_TIMEOUT_MS", "500");
+		const runner = new SureHookRunner(
+			packageWithHook(
+				dir,
+				`await new Promise(() => {});
+				export function preFinish() { return { ok: true }; }`,
+			),
+		);
+
+		const result = await runner.run("pre_finish", {} as never);
+
+		expect(result.ok).toBe(false);
+		expect(result.message).toContain("did not return within 500ms");
 	});
 
 	test("a fast hook still passes", async () => {
