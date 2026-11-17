@@ -7,7 +7,7 @@
 DOA 在当前 SURE harness 中按"多通道音频帧 -> 声源方位"处理。与 ASR/TTS 不同,
 输出的不是文本或音频,而是**每帧的声源方向列表**:
 
-- 输入: `audio_path`。单通道或多通道都可以,但 `num_channels` 必须与参考帧一致。
+- 输入: `audio_path`,必须是多通道阵列音频(`num_channels >= 2`),且 `num_channels` 必须与参考帧一致。
 - 输出: `sources` 数组,每个元素至少包含 `source_id`、`azimuth`(度)与
   `activity`(布尔);3D 任务再加 `elevation`。
 
