@@ -37,15 +37,16 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def _nonempty_prediction_rows(path: Path) -> int:
+def _prediction_keys(path: Path) -> list[str]:
+    """One key per row that carries an answer: `key<TAB>text`. Duplicates stay."""
+    keys: list[str] = []
     if not path.is_file():
-        return 0
-    count = 0
+        return keys
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         parts = line.split("\t", 1)
         if len(parts) > 1 and parts[1].strip():
-            count += 1
-    return count
+            keys.append(parts[0])
+    return keys
 
 
 def _nonempty_lines(path: Path) -> int:
@@ -53,18 +54,6 @@ def _nonempty_lines(path: Path) -> int:
         return 0
     with path.open(encoding="utf-8", errors="replace") as handle:
         return sum(1 for line in handle if line.strip())
-
-
-def _prediction_keys(path: Path) -> set[str]:
-    """The keys of the rows that carry an answer: `key<TAB>text`."""
-    keys: set[str] = set()
-    if not path.is_file():
-        return keys
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        parts = line.split("\t", 1)
-        if len(parts) > 1 and parts[1].strip():
-            keys.add(parts[0])
-    return keys
 
 
 def _reference_keys(path: Path) -> tuple[set[str], list[int]]:
@@ -156,7 +145,8 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             errors.append(f"{dataset}: dataset rows must declare expected and generated as integers")
             continue
         prediction_file = product_dir / "predictions" / f"{dataset}.txt"
-        non_empty = _nonempty_prediction_rows(prediction_file)
+        row_keys = _prediction_keys(prediction_file)
+        non_empty = len(row_keys)
         if generated != expected:
             errors.append(f"{dataset}: generated {generated} != expected {expected}")
         if non_empty != expected:
@@ -181,7 +171,7 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             reference_keys, bad_lines = _reference_keys(reference)
             for number in bad_lines:
                 errors.append(f"{dataset}: reference projection line {number} is not valid JSON")
-            predicted = _prediction_keys(prediction_file)
+            predicted = set(row_keys)
             missing = sorted(reference_keys - predicted)
             if missing:
                 listed = ", ".join(missing[:3]) + (f" (+{len(missing) - 3} more)" if len(missing) > 3 else "")
