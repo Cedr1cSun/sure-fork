@@ -12,8 +12,8 @@ It only converts XForge-style resource manifests into deterministic SURE
 artifacts.
 
 This playbook is not the SURE main-flow agent. Main evaluation orchestration
-lives in `docs/agents/main_flow_agent/AGENTS.md`; model onboarding/tool-agent behavior
-lives in `sure/skills/sure_onboard/references/AGENTS.md`. The bridge only prepares selected
+lives in `docs/agents/main_flow_agent/AGENTS.md` in the sure-eval repo; model
+onboarding/tool-agent behavior lives in `sure/skills/sure_onboard/references/AGENTS.md`. The bridge only prepares selected
 ModelScope/XForge resources for those flows.
 
 ## Boundary
