@@ -81,6 +81,43 @@ describe("SureHookRunner deadline", () => {
 		expect(result.ok).toBe(true);
 	});
 
+	// parseInt("2m") is 2, which failed every hook carrying an await within 2ms while the
+	// report named a deadline nobody set.
+	test("a SURE_HOOK_TIMEOUT_MS that is not a plain count falls back to the default", async () => {
+		vi.stubEnv("SURE_HOOK_TIMEOUT_MS", "2m");
+		const runner = new SureHookRunner(
+			packageWithHook(
+				dir,
+				`export async function preFinish() {
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					return { ok: true };
+				}`,
+			),
+		);
+
+		const result = await runner.run("pre_finish", {} as never);
+
+		expect(result.ok).toBe(true);
+	});
+
+	// setTimeout treats a delay above 2^31-1 as 1ms, which failed every hook at once.
+	test("an out-of-range SURE_HOOK_TIMEOUT_MS is clamped instead of firing immediately", async () => {
+		vi.stubEnv("SURE_HOOK_TIMEOUT_MS", "999999999999");
+		const runner = new SureHookRunner(
+			packageWithHook(
+				dir,
+				`export async function preFinish() {
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					return { ok: true };
+				}`,
+			),
+		);
+
+		const result = await runner.run("pre_finish", {} as never);
+
+		expect(result.ok).toBe(true);
+	});
+
 	test("a hook that rejects still reports its own message", async () => {
 		vi.stubEnv("SURE_HOOK_TIMEOUT_MS", "5000");
 		const runner = new SureHookRunner(

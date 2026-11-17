@@ -12,10 +12,15 @@ type HookFunction = (context: SureHookContext) => SureHookResult | Promise<SureH
  * execution boundary design (issue #172); this is the interim, and the repair text says so.
  */
 const DEFAULT_HOOK_TIMEOUT_MS = 120_000;
+// setTimeout treats any delay above 2^31-1 as 1ms and warns, so a huge value must clamp.
+const MAX_HOOK_TIMEOUT_MS = 2_147_483_647;
 
 function hookTimeoutMs(): number {
-	const raw = Number.parseInt(process.env.SURE_HOOK_TIMEOUT_MS ?? "", 10);
-	return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_HOOK_TIMEOUT_MS;
+	const raw = process.env.SURE_HOOK_TIMEOUT_MS ?? "";
+	// parseInt("2m") is 2; only a plain count of milliseconds is accepted.
+	if (!/^\d+$/.test(raw)) return DEFAULT_HOOK_TIMEOUT_MS;
+	const parsed = Number.parseInt(raw, 10);
+	return parsed > 0 ? Math.min(parsed, MAX_HOOK_TIMEOUT_MS) : DEFAULT_HOOK_TIMEOUT_MS;
 }
 
 class HookDeadlineExceeded extends Error {}
