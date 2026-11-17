@@ -93,3 +93,28 @@ test("fails when the lock pins a different version than requirements.in", () => 
 		rmSync(repo, { recursive: true, force: true });
 	}
 });
+
+test("ignores option lines", () => {
+	const repo = makeRepo({
+		evaluationIn: "--extra-index-url https://mirror.example\n-r base.in\npydantic>=2.0.0\npyyaml>=6.0.0\n",
+	});
+	try {
+		const result = run(repo);
+		assert.equal(result.status, 0, result.stderr);
+	} finally {
+		rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("names a direct reference by its package name", () => {
+	const repo = makeRepo({
+		evaluationIn: "librosa @ git+https://github.com/example/librosa\npydantic>=2.0.0\npyyaml>=6.0.0\n",
+		evaluationLock: "librosa==0.10.0 \\\n    --hash=sha256:cc\npydantic==2.0.0 \\\n    --hash=sha256:aa\npyyaml==6.0.3 \\\n    --hash=sha256:bb\n",
+	});
+	try {
+		const result = run(repo);
+		assert.equal(result.status, 0, result.stderr);
+	} finally {
+		rmSync(repo, { recursive: true, force: true });
+	}
+});

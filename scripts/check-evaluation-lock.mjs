@@ -30,8 +30,8 @@ function requirements(text) {
 	const out = [];
 	for (const line of text.split(/\r?\n/)) {
 		const cleaned = line.replace(/(^|\s)#.*$/, "").trim();
-		if (!cleaned) continue;
-		const name = normalize(cleaned.split(/[<>=!~[;\s]/)[0].trim());
+		if (!cleaned || cleaned.startsWith("-")) continue;
+		const name = normalize(cleaned.split(/[<>=!~[;@\s]/)[0].trim());
 		if (!name) continue;
 		const pin = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[^\]]*\])?==([^;#\s]+)/.exec(cleaned);
 		out.push({ name, pin: pin ? pin[1] : null });
