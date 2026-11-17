@@ -20,13 +20,10 @@
  */
 const PROBE_DEPENDENCIES = ["pyyaml", "pydantic", "structlog", "rich"];
 
-export function pythonInvocation(args, { harnessOnly = false } = {}) {
+export function pythonInvocation(args) {
 	const harness = process.env.HARNESS_PYTHON_BIN || process.env.SURE_EVAL_HARNESS_PYTHON_BIN;
 	if (harness) {
 		return [harness, args];
-	}
-	if (harnessOnly) {
-		return null;
 	}
 	return [
 		"uv",

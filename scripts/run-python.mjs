@@ -11,13 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { pythonInvocation } from "./python-runner.mjs";
 
-const invocation = pythonInvocation(process.argv.slice(2));
-if (!invocation) {
-	console.error("no Python interpreter available");
-	process.exit(127);
-}
-
-const [command, args] = invocation;
+const [command, args] = pythonInvocation(process.argv.slice(2));
 const result = spawnSync(command, args, { stdio: "inherit" });
 if (result.error) {
 	console.error(`${command} could not be started: ${result.error.message}`);
