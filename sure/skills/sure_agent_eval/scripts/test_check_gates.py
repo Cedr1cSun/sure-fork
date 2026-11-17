@@ -194,6 +194,16 @@ class CheckAgentExecutionTests(GateTestCase):
         write_json(produces, result)
         return check_agent_execution.gate_errors(self.run_dir, produces)
 
+    def write_audio_stage(self) -> None:
+        spec = make_spec(self.product_dir)
+        spec["stages"] = [{"id": "denoise", "mode": "mcp_tool", "task": "SE", "output_modality": "audio"}]
+        write_json(self.artifacts / "agent_spec_resolved.json", spec)
+
+    def write_enhanced_evidence(self, rows: str) -> None:
+        directory = self.product_dir / "enhanced" / "denoise"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{DATASET}.tsv").write_text(rows, encoding="utf-8")
+
     def test_accepts_a_succeeded_run(self) -> None:
         self.assertEqual(self.check(make_execution(self.product_dir)), [])
 
@@ -285,6 +295,73 @@ class CheckAgentExecutionTests(GateTestCase):
         errors = self.check(make_execution(self.product_dir))
         self.assertTrue(any("reference key" in error for error in errors), errors)
         self.assertTrue(any("reference key(s): 7" in error for error in errors), errors)
+
+    def test_rejects_a_missing_enhanced_evidence_file(self) -> None:
+        # A speech-enhancement stage produced audio; without the TSV nothing records which
+        # file the next stage actually consumed, and the run used to pass anyway.
+        self.write_audio_stage()
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("no evidence file" in error for error in errors), errors)
+
+    def test_checks_enhanced_evidence_even_when_the_reference_projection_is_short(self) -> None:
+        # The evidence check sits at loop level: losing the key check to a short reference
+        # projection must not take the speech-enhancement obligations with it.
+        self.write_audio_stage()
+        reference = self.product_dir / "references" / "sure_benchmark" / "jsonl" / f"{DATASET}.jsonl"
+        reference.write_text('{"key": "utt0"}\n', encoding="utf-8")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("no evidence file" in error for error in errors), errors)
+
+    def test_rejects_enhanced_evidence_without_a_row_per_sample(self) -> None:
+        self.write_audio_stage()
+        self.write_enhanced_evidence("utt0\t/tmp/enhanced-utt0.wav\n")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("evidence for 1 sample(s), expected 2" in error for error in errors), errors)
+
+    def test_rejects_enhanced_evidence_that_points_at_a_missing_file(self) -> None:
+        self.write_audio_stage()
+        self.write_enhanced_evidence("utt0\t/tmp/gone-0.wav\nutt1\t/tmp/gone-1.wav\n")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("missing or relative audio path" in error for error in errors), errors)
+
+    def test_accepts_enhanced_evidence_that_covers_every_sample(self) -> None:
+        self.write_audio_stage()
+        directory = self.product_dir / "enhanced" / "denoise"
+        directory.mkdir(parents=True, exist_ok=True)
+        first = directory / "utt0.wav"
+        second = directory / "utt1.wav"
+        first.write_bytes(b"RIFF")
+        second.write_bytes(b"RIFF")
+        self.write_enhanced_evidence(f"utt0\t{first}\nutt1\t{second}\n")
+        self.assertEqual(self.check(make_execution(self.product_dir)), [])
+
+    def test_rejects_enhanced_evidence_whose_digest_does_not_match(self) -> None:
+        # A path that still resolves is not enough: the digest is what ties the row to the
+        # bytes the stage produced, so a replaced or truncated file is caught here.
+        self.write_audio_stage()
+        directory = self.product_dir / "enhanced" / "denoise"
+        directory.mkdir(parents=True, exist_ok=True)
+        first = directory / "utt0.wav"
+        second = directory / "utt1.wav"
+        first.write_bytes(b"RIFF")
+        second.write_bytes(b"RIFF")
+        self.write_enhanced_evidence(f"utt0\t{first}\t{'0' * 64}\nutt1\t{second}\t{'0' * 64}\n")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("sha256 does not match" in error for error in errors), errors)
+
+    def test_accepts_enhanced_evidence_with_matching_digests(self) -> None:
+        self.write_audio_stage()
+        directory = self.product_dir / "enhanced" / "denoise"
+        directory.mkdir(parents=True, exist_ok=True)
+        first = directory / "utt0.wav"
+        second = directory / "utt1.wav"
+        first.write_bytes(b"RIFF")
+        second.write_bytes(b"RIFF")
+        self.write_enhanced_evidence(
+            f"utt0\t{first}\t{check_agent_execution._sha256(first)}\n"
+            f"utt1\t{second}\t{check_agent_execution._sha256(second)}\n"
+        )
+        self.assertEqual(self.check(make_execution(self.product_dir)), [])
 
     def test_rejects_a_manifest_sha256_that_the_prediction_file_does_not_back(self) -> None:
         write_json(
