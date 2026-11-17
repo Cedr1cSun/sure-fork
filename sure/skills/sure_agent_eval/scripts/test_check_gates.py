@@ -257,10 +257,58 @@ class CheckAgentExecutionTests(GateTestCase):
         errors = self.check(make_execution(self.product_dir))
         self.assertTrue(any("non-empty rows" in error for error in errors))
 
+    def test_rejects_a_prediction_file_that_skips_a_reference_key(self) -> None:
+        # The same number of rows under the wrong keys: the row-count check passes, and
+        # /sure_eval only reports "missing structured prediction row" after it has started.
+        prediction_file = self.product_dir / "predictions" / f"{DATASET}.txt"
+        prediction_file.write_text("utt0\thello\nghost\tworld\n", encoding="utf-8")
+        write_json(
+            self.product_dir / "predictions" / "manifest.json",
+            {
+                "datasets": {
+                    DATASET: {
+                        "prediction_file": f"predictions/{DATASET}.txt",
+                        "sha256": hashlib.sha256(prediction_file.read_bytes()).hexdigest(),
+                        "rows": 2,
+                    }
+                }
+            },
+        )
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("reference key" in error for error in errors), errors)
+        self.assertTrue(any("utt1" in error for error in errors), errors)
+
+    def test_rejects_a_reference_projection_line_that_is_not_valid_json(self) -> None:
+        # A truncated row used to be skipped silently, which dropped its key from the
+        # reconciliation: predictions could then name a ghost key and pass every check.
+        reference = self.product_dir / "references" / "sure_benchmark" / "jsonl" / f"{DATASET}.jsonl"
+        reference.write_text('{"key": "utt0"}\n{"key": "utt1\n', encoding="utf-8")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("not valid JSON" in error for error in errors), errors)
+        self.assertTrue(any("line 2" in error for error in errors), errors)
+
+    def test_rejects_a_prediction_file_that_skips_a_non_string_reference_key(self) -> None:
+        # agent_runner derives keys with str(row.get("key") or ""), so a numeric key still
+        # expects its prediction; the gate used to drop it and pass a run missing it.
+        reference = self.product_dir / "references" / "sure_benchmark" / "jsonl" / f"{DATASET}.jsonl"
+        reference.write_text('{"key": "utt0"}\n{"key": 7}\n', encoding="utf-8")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("reference key" in error for error in errors), errors)
+        self.assertTrue(any("reference key(s): 7" in error for error in errors), errors)
+
     def test_rejects_a_missing_enhanced_evidence_file(self) -> None:
         # A speech-enhancement stage produced audio; without the TSV nothing records which
         # file the next stage actually consumed, and the run used to pass anyway.
         self.write_audio_stage()
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("no evidence file" in error for error in errors), errors)
+
+    def test_checks_enhanced_evidence_even_when_the_reference_projection_is_short(self) -> None:
+        # The evidence check sits at loop level: losing the key check to a short reference
+        # projection must not take the speech-enhancement obligations with it.
+        self.write_audio_stage()
+        reference = self.product_dir / "references" / "sure_benchmark" / "jsonl" / f"{DATASET}.jsonl"
+        reference.write_text('{"key": "utt0"}\n', encoding="utf-8")
         errors = self.check(make_execution(self.product_dir))
         self.assertTrue(any("no evidence file" in error for error in errors), errors)
 

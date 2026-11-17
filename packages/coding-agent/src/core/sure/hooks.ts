@@ -5,6 +5,41 @@ import type { SureHookContext, SureHookDeclaration, SureHookPoint, SureHookResul
 
 type HookFunction = (context: SureHookContext) => SureHookResult | Promise<SureHookResult | undefined> | undefined;
 
+/**
+ * Soft deadline for one hook call. A handler that ignores it keeps running — this only
+ * stops the run from waiting forever, which is how a hanging pre_tool_call used to block
+ * a run with no way out. Killing the handler needs the worker isolation in the hook
+ * execution boundary design (issue #172); this is the interim, and the repair text says so.
+ */
+const DEFAULT_HOOK_TIMEOUT_MS = 120_000;
+// setTimeout treats any delay above 2^31-1 as 1ms and warns, so a huge value must clamp.
+const MAX_HOOK_TIMEOUT_MS = 2_147_483_647;
+
+function hookTimeoutMs(): number {
+	const raw = process.env.SURE_HOOK_TIMEOUT_MS ?? "";
+	// parseInt("2m") is 2; only a plain count of milliseconds is accepted.
+	if (!/^\d+$/.test(raw)) return DEFAULT_HOOK_TIMEOUT_MS;
+	const parsed = Number.parseInt(raw, 10);
+	return parsed > 0 ? Math.min(parsed, MAX_HOOK_TIMEOUT_MS) : DEFAULT_HOOK_TIMEOUT_MS;
+}
+
+class HookDeadlineExceeded extends Error {}
+
+async function withDeadline<T>(task: Promise<T> | T, ms: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			Promise.resolve(task),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => reject(new HookDeadlineExceeded(`exceeded ${ms}ms`)), ms);
+				(timer as unknown as { unref?: () => void }).unref?.();
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
 export interface SureGateResult {
 	ok: boolean;
 	message?: string;
@@ -86,27 +121,41 @@ export class SureHookRunner {
 			};
 		}
 
+		const timeoutMs = hookTimeoutMs();
 		try {
-			const loaded = await this.jiti.import(hookPath);
-			const moduleValue = loaded as Record<string, unknown>;
-			const handlerName = declaration.handler ?? point;
-			const handler =
-				(typeof moduleValue[handlerName] === "function" ? moduleValue[handlerName] : undefined) ??
-				(typeof moduleValue.default === "function" ? moduleValue.default : undefined);
-			if (!handler) {
-				return {
-					ok: false,
-					message: `Hook handler not found: ${handlerName}`,
-					repair: `Export a function named "${handlerName}" from ${declaration.module}, or provide a default export.`,
-				};
-			}
-
-			const value = await (handler as HookFunction)({
-				...context,
-				point,
-			});
+			// The deadline covers loading the hook module too: top-level code that never
+			// settles must not block the run any longer than a hanging handler does.
+			const value = await withDeadline(
+				(async (): Promise<unknown> => {
+					const loaded = await this.jiti.import(hookPath);
+					const moduleValue = loaded as Record<string, unknown>;
+					const handlerName = declaration.handler ?? point;
+					const handler =
+						(typeof moduleValue[handlerName] === "function" ? moduleValue[handlerName] : undefined) ??
+						(typeof moduleValue.default === "function" ? moduleValue.default : undefined);
+					if (!handler) {
+						return {
+							ok: false,
+							message: `Hook handler not found: ${handlerName}`,
+							repair: `Export a function named "${handlerName}" from ${declaration.module}, or provide a default export.`,
+						};
+					}
+					return (handler as HookFunction)({
+						...context,
+						point,
+					});
+				})(),
+				timeoutMs,
+			);
 			return normalizeHookResult(value);
 		} catch (error) {
+			if (error instanceof HookDeadlineExceeded) {
+				return {
+					ok: false,
+					message: `Sure ${point} hook ${declaration.module} did not return within ${timeoutMs}ms`,
+					repair: `Make the ${point} hook return faster, or raise SURE_HOOK_TIMEOUT_MS. The handler is not killed and may still be running.`,
+				};
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			return {
 				ok: false,

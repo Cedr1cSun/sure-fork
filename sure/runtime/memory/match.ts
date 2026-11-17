@@ -509,10 +509,15 @@ export function displayPath(path: string): string {
 }
 
 /**
- * One injected line: "- [status] entry_id (path[; pending revision: path]): H1 title".
+ * One injected line: "- [status] entry_id (path[; pending revision: path]): [stale] H1 title".
  * The path comes before the title so a per-entry cut only ever shortens the title; the agent
  * needs the path to read the entry (that read is what §8.1 calls activation). A path that is
  * not repo-relative is dropped, and with it the parenthesis when nothing is left to show.
+ *
+ * A stale entry carries " [stale]" before the title: `checked_at` passed its task's window and
+ * the fact has not been re-verified, which is the one piece of provenance the status tier does
+ * not already express (a confirmed entry can be stale). It sits before the title so a per-entry
+ * cut shortens the title and never takes the marker: a cut line without its warning reads fresh.
  */
 export function renderEntryLine(match: MemoryMatch, maxChars: number | undefined): string {
 	const entry = match.entry;
@@ -526,7 +531,8 @@ export function renderEntryLine(match: MemoryMatch, maxChars: number | undefined
 		parts.push(`pending revision: ${revision}`);
 	}
 	const where = parts.length > 0 ? ` (${parts.join("; ")})` : "";
-	const line = `- [${entry.status}] ${entry.entry_id}${where}: ${oneLine(entry.title, entry.entry_id)}`;
+	const staleMark = entry.stale ? "[stale] " : "";
+	const line = `- [${entry.status}] ${entry.entry_id}${where}: ${staleMark}${oneLine(entry.title, entry.entry_id)}`;
 	return maxChars === undefined ? line : truncateLine(line, maxChars);
 }
 
