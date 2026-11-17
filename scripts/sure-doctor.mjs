@@ -372,6 +372,8 @@ for (const runtime of [
 		kind: "evaluation",
 		prepare:
 			"python3 sure/skills/sure_infer/scripts/evaluation_runtime.py --engine-root sure/external/sure-evaluation --prepare",
+		prepareNote:
+			"Preparing by hand needs a bound Harness Runtime first (any Sure run binds one); see docs/evaluation_engine.md.",
 	},
 ]) {
 	const specPath = join(root, runtime.spec);
@@ -391,7 +393,7 @@ for (const runtime of [
 	} else {
 		warn(
 			runtime.label,
-			`${id} is not materialized; the first Sure run prepares it. To prepare now: ${runtime.prepare}`,
+			`${id} is not materialized; the first Sure run prepares it.${runtime.prepareNote ? ` ${runtime.prepareNote}` : ""} To prepare now: ${runtime.prepare}`,
 		);
 	}
 }

@@ -123,6 +123,9 @@ test("warns when the runtime is not materialized and names the prepare command",
 		assert.ok(line, `expected a WARN for the evaluation runtime, stdout:\n${result.stdout}`);
 		assert.ok(line.includes(id), `expected the runtime id ${id} in: ${line}`);
 		assert.ok(line.includes("--prepare"), `expected the prepare command in: ${line}`);
+		// The command cannot run on its own: it needs a bound Harness Runtime first, and
+		// a user who copies it out of the WARN must be told so.
+		assert.ok(line.includes("bound Harness Runtime"), `expected the binding note in: ${line}`);
 	} finally {
 		rmSync(repo, { recursive: true, force: true });
 	}
