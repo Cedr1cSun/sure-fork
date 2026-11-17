@@ -523,16 +523,27 @@ describe("memory match: applyRecallBudget and buildMemoryBlock", () => {
 		);
 	});
 
-	it("marks a stale entry after the title, so a cut never takes the path", () => {
+	it("marks a stale entry before the title, so a cut never takes the marker", () => {
 		// A confirmed entry can still be stale: checked_at passed the task's window and the
 		// fact was not re-verified. The status tier does not say that, and the agent is the
 		// one deciding whether to trust it.
 		const fresh = entry({ entry_id: "sure_onboard/a" });
 		const stale = { entry: { ...fresh, stale: true }, hitLength: 1 };
 		expect(renderEntryLine(stale, undefined)).toBe(
-			"- [confirmed] sure_onboard/a (sure/skills/sure_onboard/references/memory/bad_cases/a.md): Title of a [stale]",
+			"- [confirmed] sure_onboard/a (sure/skills/sure_onboard/references/memory/bad_cases/a.md): [stale] Title of a",
 		);
 		expect(renderEntryLine({ entry: fresh, hitLength: 1 }, undefined)).not.toContain("[stale]");
+
+		// The per-entry cut shortens the title from the end: the marker must survive it, or a
+		// stale entry reads as fresh exactly when its title is too long to show in full.
+		const long = {
+			...fresh,
+			stale: true,
+			title: "A title long enough to run past the per-entry cut. ".repeat(8),
+		};
+		const cut = renderEntryLine({ entry: long, hitLength: 1 }, CONFIG.inject_max_chars_per_entry);
+		expect(cut).toContain("[stale]");
+		expect(cut.endsWith("...")).toBe(true);
 	});
 
 	it("drops an entry path that is not repo-relative, and the parenthesis with it", () => {
