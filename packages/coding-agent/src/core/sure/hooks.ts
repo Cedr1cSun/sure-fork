@@ -178,6 +178,7 @@ export class SureHookRunner {
 				new Promise<SureHookResult>((resolve, reject) => {
 					const id = this.nextCallId++;
 					this.pending.set(id, { resolve, reject });
+					worker.ref();
 					worker.postMessage({
 						id,
 						hookPath,
@@ -216,6 +217,11 @@ export class SureHookRunner {
 				if (message?.type === "result" || message?.type === "error") {
 					const pending = this.pending.get(message.id);
 					this.pending.delete(message.id);
+					// A live worker would keep the CLI process alive after the run settles;
+					// it only counts towards the event loop while a call is in flight.
+					if (this.pending.size === 0) {
+						worker.unref();
+					}
 					if (!pending) return;
 					if (message.type === "result") {
 						pending.resolve(message.result);
