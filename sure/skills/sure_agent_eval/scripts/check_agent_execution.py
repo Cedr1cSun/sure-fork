@@ -37,15 +37,16 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def _nonempty_prediction_rows(path: Path) -> int:
+def _prediction_keys(path: Path) -> list[str]:
+    """One key per row that carries an answer: `key<TAB>text`. Duplicates stay."""
+    keys: list[str] = []
     if not path.is_file():
-        return 0
-    count = 0
+        return keys
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         parts = line.split("\t", 1)
         if len(parts) > 1 and parts[1].strip():
-            count += 1
-    return count
+            keys.append(parts[0])
+    return keys
 
 
 def _nonempty_lines(path: Path) -> int:
@@ -53,6 +54,30 @@ def _nonempty_lines(path: Path) -> int:
         return 0
     with path.open(encoding="utf-8", errors="replace") as handle:
         return sum(1 for line in handle if line.strip())
+
+
+def _reference_keys(path: Path) -> tuple[set[str], list[int]]:
+    """The keys a reference projection expects, plus the 1-based lines that are not valid JSON.
+
+    A row without a usable key is skipped. A row that does not parse is not: skipping it
+    dropped its key from the reconciliation and reopened the gap this check exists to close.
+    """
+    keys: set[str] = set()
+    bad_lines: list[int] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            bad_lines.append(number)
+            continue
+        if isinstance(row, dict):
+            # Same key derivation as agent_runner.py, so both sides agree on what a key is.
+            key = str(row.get("key") or "")
+            if key:
+                keys.add(key)
+    return keys, bad_lines
 
 
 def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
@@ -120,7 +145,8 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             errors.append(f"{dataset}: dataset rows must declare expected and generated as integers")
             continue
         prediction_file = product_dir / "predictions" / f"{dataset}.txt"
-        non_empty = _nonempty_prediction_rows(prediction_file)
+        row_keys = _prediction_keys(prediction_file)
+        non_empty = len(row_keys)
         if generated != expected:
             errors.append(f"{dataset}: generated {generated} != expected {expected}")
         if non_empty != expected:
@@ -138,6 +164,20 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             errors.append(f"{dataset}: missing reference projection {reference}")
         elif _nonempty_lines(reference) < expected:
             errors.append(f"{dataset}: reference projection carries fewer than {expected} rows")
+        else:
+            # A row count can match while the keys do not: the file can carry the right
+            # number of answers under keys the reference never names. /sure_eval reports
+            # that only after it has started, so the cheapest place to catch it is here.
+            reference_keys, bad_lines = _reference_keys(reference)
+            for number in bad_lines:
+                errors.append(f"{dataset}: reference projection line {number} is not valid JSON")
+            predicted = set(row_keys)
+            missing = sorted(reference_keys - predicted)
+            if missing:
+                listed = ", ".join(missing[:3]) + (f" (+{len(missing) - 3} more)" if len(missing) > 3 else "")
+                errors.append(
+                    f"{dataset}: predictions/{dataset}.txt has no row for {len(missing)} reference key(s): {listed}"
+                )
     if not (product_dir / "protocol.yaml").is_file():
         errors.append(f"protocol.yaml missing from product directory {product_dir}")
     if not (product_dir / "predictions" / "manifest.json").is_file():
