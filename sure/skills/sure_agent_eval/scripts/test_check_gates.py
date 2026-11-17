@@ -268,6 +268,24 @@ class CheckAgentExecutionTests(GateTestCase):
         self.assertTrue(any("reference key" in error for error in errors), errors)
         self.assertTrue(any("utt1" in error for error in errors), errors)
 
+    def test_rejects_a_reference_projection_line_that_is_not_valid_json(self) -> None:
+        # A truncated row used to be skipped silently, which dropped its key from the
+        # reconciliation: predictions could then name a ghost key and pass every check.
+        reference = self.product_dir / "references" / "sure_benchmark" / "jsonl" / f"{DATASET}.jsonl"
+        reference.write_text('{"key": "utt0"}\n{"key": "utt1\n', encoding="utf-8")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("not valid JSON" in error for error in errors), errors)
+        self.assertTrue(any("line 2" in error for error in errors), errors)
+
+    def test_rejects_a_prediction_file_that_skips_a_non_string_reference_key(self) -> None:
+        # agent_runner derives keys with str(row.get("key") or ""), so a numeric key still
+        # expects its prediction; the gate used to drop it and pass a run missing it.
+        reference = self.product_dir / "references" / "sure_benchmark" / "jsonl" / f"{DATASET}.jsonl"
+        reference.write_text('{"key": "utt0"}\n{"key": 7}\n', encoding="utf-8")
+        errors = self.check(make_execution(self.product_dir))
+        self.assertTrue(any("reference key" in error for error in errors), errors)
+        self.assertTrue(any("reference key(s): 7" in error for error in errors), errors)
+
     def test_rejects_a_manifest_sha256_that_the_prediction_file_does_not_back(self) -> None:
         write_json(
             self.product_dir / "predictions" / "manifest.json",

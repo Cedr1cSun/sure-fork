@@ -67,21 +67,28 @@ def _prediction_keys(path: Path) -> set[str]:
     return keys
 
 
-def _reference_keys(path: Path) -> set[str]:
-    """The keys a reference projection expects. Rows without a usable key are skipped."""
+def _reference_keys(path: Path) -> tuple[set[str], list[int]]:
+    """The keys a reference projection expects, plus the 1-based lines that are not valid JSON.
+
+    A row without a usable key is skipped. A row that does not parse is not: skipping it
+    dropped its key from the reconciliation and reopened the gap this check exists to close.
+    """
     keys: set[str] = set()
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    bad_lines: list[int] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
         if not line.strip():
             continue
         try:
             row = json.loads(line)
         except json.JSONDecodeError:
+            bad_lines.append(number)
             continue
         if isinstance(row, dict):
-            key = row.get("key")
-            if isinstance(key, str) and key:
+            # Same key derivation as agent_runner.py, so both sides agree on what a key is.
+            key = str(row.get("key") or "")
+            if key:
                 keys.add(key)
-    return keys
+    return keys, bad_lines
 
 
 def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
@@ -171,8 +178,11 @@ def gate_errors(run_dir: Path, result_path: Path) -> list[str]:
             # A row count can match while the keys do not: the file can carry the right
             # number of answers under keys the reference never names. /sure_eval reports
             # that only after it has started, so the cheapest place to catch it is here.
+            reference_keys, bad_lines = _reference_keys(reference)
+            for number in bad_lines:
+                errors.append(f"{dataset}: reference projection line {number} is not valid JSON")
             predicted = _prediction_keys(prediction_file)
-            missing = sorted(_reference_keys(reference) - predicted)
+            missing = sorted(reference_keys - predicted)
             if missing:
                 listed = ", ".join(missing[:3]) + (f" (+{len(missing) - 3} more)" if len(missing) > 3 else "")
                 errors.append(
