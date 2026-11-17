@@ -44,7 +44,8 @@ fixtures/tasks/doa/doa_smoke/
 
 索引见 `fixtures/tasks/doa/README.md`。该 fixture 是单帧、双通道、2D 的
 最小契约样例:一行 `gt.jsonl` 给出 `recording_id`、`frame_index`、
-`timestamp`、`num_channels` 与 `sources[].azimuth`。接入新模型时复制这一帧
+`timestamp`、`num_channels`、`coordinate_system`、`angle_unit` 与
+`sources[].azimuth`。接入新模型时复制这一帧
 音频到模型目录,不要修改共享 fixture。
 
 DOA metric namespace:
@@ -75,31 +76,36 @@ DOA 引擎 manifest 声明 8 个默认指标,全部走同一条 `doa_jsonl` 输�
 ```bash
 sure-eval metric describe doa \
   --language any \
-  --metrics mae,rmse,acc_10,acc_15,acc_30,localization_recall,localization_precision,localization_f1 \
+  --metric mae \
   --output /tmp/doa_pipeline.json \
   --json
+```
 
+doa 是原子单指标任务,一次 `describe` 只收一个 `--metric`;其余 7 个指标各自
+`describe` 一次(各对应 `doa.any.<metric>.…` pipeline),CSV 多指标写法会按字面
+找不到路由。
+
+```bash
 sure-eval metric run \
   --pipeline /tmp/doa_pipeline.json \
-  --samples-jsonl /tmp/doa_samples.jsonl \
+  --reference-jsonl fixtures/tasks/doa/doa_smoke/gt.jsonl \
+  --sample-output outputs/doa_pred.jsonl \
   --output-dir /tmp/sure_eval/doa_eval \
   --device cpu \
   --json
 ```
 
-`samples_jsonl` 每行必须显式给出角色:
+doa 不走 `--samples-jsonl` 机制(那是 TTS/TTA/VC/SE/TSE/RIR 的输入面),必须
+用 `--reference-jsonl` + `--sample-output` 两个显式参数。3D 任务给 run 传
+`--dimension 3d`,阈值与聚合用 `--threshold-deg` / `--aggregation` 显式传。
+
+`prediction_jsonl`(即 `--sample-output` 指向的文件)每行至少包含:
 
 ```json
-{"sample_id":"doa_smoke_001_0000","prediction_jsonl":"outputs/doa_pred.jsonl","reference_jsonl":"gt.jsonl","dimension":"2d","threshold_deg":10.0,"aggregation":"micro"}
+{"recording_id":"doa_smoke_001","frame_index":0,"timestamp":0.0,"num_channels":2,"coordinate_system":"array_local_spherical","angle_unit":"degree","sources":[{"source_id":"source_0","azimuth":30.0,"activity":true}]}
 ```
 
-`prediction_jsonl` 每行至少包含:
-
-```json
-{"recording_id":"doa_smoke_001","frame_index":0,"timestamp":0.0,"num_channels":2,"sources":[{"source_id":"source_0","azimuth":30.0,"activity":true}]}
-```
-
-2D 任务只写 `azimuth`;3D 任务补 `elevation`,并把 `dimension` 改成 `3d`。
+2D 任务只写 `azimuth`;3D 任务补 `elevation`。
 没有真实多通道输入的模型不要声称支持 DOA:单通道音频无法确定方位,这类提交
 应按 `blocked` 记录,而不是用一个恒定角度凑指标。
 
