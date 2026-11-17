@@ -19,7 +19,7 @@ routing. The registry, rather than this document, defines the accepted set.
 
 Always read:
 
-- `docs/agents/model_tool_agent/AGENTS.md`
+- `sure/skills/sure_onboard/references/AGENTS.md`
 - this routing file
 
 Then read only the task playbook selected below.
@@ -85,10 +85,10 @@ Use this shape:
 {
   "context_selection": {
     "task_playbooks_read": [
-      "docs/agents/model_tool_agent/task_playbooks/ASR.md"
+      "sure/skills/sure_onboard/references/task_playbooks/ASR.md"
     ],
     "task_playbooks_skipped": [
-      "docs/agents/model_tool_agent/task_playbooks/TTS.md"
+      "sure/skills/sure_onboard/references/task_playbooks/TTS.md"
     ],
     "reason": "MODEL_INPUT.task_type is ASR"
   }
