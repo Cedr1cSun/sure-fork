@@ -131,6 +131,46 @@ test("warns when the runtime is not materialized and names the prepare command",
 	}
 });
 
+test("an evaluation spec without version fields falls back to the generator defaults", () => {
+	const { repo } = makeRuntimeRepo({ kind: "evaluation", materialized: false });
+	try {
+		const specPath = join(repo, "sure", "runtime", "evaluation", "runtime.json");
+		const spec = JSON.parse(readFileSync(specPath, "utf8"));
+		delete spec.runtime_version;
+		delete spec.materialization_version;
+		writeFileSync(specPath, JSON.stringify(spec));
+		const result = spawnSync(process.execPath, [doctor], { cwd: repo, encoding: "utf8" });
+		const line = result.stdout
+			.split(/\r?\n/)
+			.find((candidate) => candidate.startsWith("WARN evaluation runtime"));
+		assert.ok(line, `expected a WARN for the evaluation runtime, stdout:\n${result.stdout}`);
+		assert.ok(line.includes("sure-evaluation-root-v1-m1-"), `expected the default id in: ${line}`);
+		assert.ok(!line.includes("undefined"), `expected no undefined in: ${line}`);
+	} finally {
+		rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("a harness spec without version fields is refused instead of given a wrong id", () => {
+	const { repo } = makeRuntimeRepo({ kind: "harness", materialized: false });
+	try {
+		const specPath = join(repo, "sure", "runtime", "harness", "runtime.json");
+		const spec = JSON.parse(readFileSync(specPath, "utf8"));
+		delete spec.harness_version;
+		delete spec.materialization_version;
+		writeFileSync(specPath, JSON.stringify(spec));
+		const result = spawnSync(process.execPath, [doctor], { cwd: repo, encoding: "utf8" });
+		const line = result.stdout
+			.split(/\r?\n/)
+			.find((candidate) => candidate.startsWith("WARN harness runtime"));
+		assert.ok(line, `expected a WARN for the harness runtime, stdout:\n${result.stdout}`);
+		assert.ok(line.includes("must declare"), `expected the missing-fields message in: ${line}`);
+		assert.ok(!line.includes("undefined"), `expected no undefined in: ${line}`);
+	} finally {
+		rmSync(repo, { recursive: true, force: true });
+	}
+});
+
 // docs/evaluation_engine.md: /sure_eval refuses a route plan when the engine
 // checkout and runtime.json disagree. The gitlink and the checkout can be
 // updated together while runtime.json is left behind, so comparing only those

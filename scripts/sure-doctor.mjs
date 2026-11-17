@@ -351,10 +351,14 @@ function sha256File(path) {
 function runtimeId(kind, spec, lockSha) {
 	const python = String(spec.python ?? "3.11").replaceAll(".", "");
 	if (kind === "harness") {
+		// bootstrap.py refuses a harness spec without these two, so surface the gap here
+		// instead of building an id carrying "undefined".
+		if (!spec.harness_version || !spec.materialization_version) return null;
 		return `sure-harness-${spec.harness_version}-m${spec.materialization_version}-py${python}-${lockSha.slice(0, 12)}`;
 	}
 	const commit = String(spec.engine_commit ?? "").slice(0, 12);
-	return `sure-evaluation-${spec.runtime_version}-m${spec.materialization_version}-${commit}-py${python}-${lockSha.slice(0, 12)}`;
+	// evaluation_runtime.py defaults these two the same way; match it exactly.
+	return `sure-evaluation-${spec.runtime_version ?? "root-v1"}-m${spec.materialization_version ?? 1}-${commit}-py${python}-${lockSha.slice(0, 12)}`;
 }
 
 for (const runtime of [
@@ -388,6 +392,10 @@ for (const runtime of [
 		continue;
 	}
 	const id = runtimeId(runtime.kind, spec, sha256File(lockPath));
+	if (!id) {
+		warn(runtime.label, `${runtime.spec} must declare harness_version and materialization_version`);
+		continue;
+	}
 	if (existsSync(join(root, runtime.dir, id, "runtime-manifest.json"))) {
 		pass(runtime.label, `${id} is materialized`);
 	} else {
