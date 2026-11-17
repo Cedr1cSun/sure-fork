@@ -23,22 +23,29 @@ function normalize(name) {
 	return name.toLowerCase().replace(/[-_.]+/g, "-");
 }
 
-function requirementNames(text) {
-	return text
-		.split(/\r?\n/)
-		.map((line) => line.replace(/(^|\s)#.*$/, "").trim())
-		.filter(Boolean)
-		.map((line) => normalize(line.split(/[<>=!~[;\s]/)[0].trim()))
-		.filter(Boolean);
+function requirements(text) {
+	// Exact `==x.y.z` pins carry their version for comparison; range constraints and
+	// direct references are name-checked only. shortcut: PEP 440-equivalent spellings
+	// are compared as strings, upgrade to a normaliser when a requirement needs it.
+	const out = [];
+	for (const line of text.split(/\r?\n/)) {
+		const cleaned = line.replace(/(^|\s)#.*$/, "").trim();
+		if (!cleaned) continue;
+		const name = normalize(cleaned.split(/[<>=!~[;\s]/)[0].trim());
+		if (!name) continue;
+		const pin = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[^\]]*\])?==([^;#\s]+)/.exec(cleaned);
+		out.push({ name, pin: pin ? pin[1] : null });
+	}
+	return out;
 }
 
-function lockedNames(text) {
-	const names = new Set();
+function lockedVersions(text) {
+	const versions = new Map();
 	for (const line of text.split(/\r?\n/)) {
-		const match = /^([A-Za-z0-9][A-Za-z0-9._-]*)==/.exec(line.trim());
-		if (match) names.add(normalize(match[1]));
+		const match = /^([A-Za-z0-9][A-Za-z0-9._-]*)==([^;#\s]+)/.exec(line.trim());
+		if (match) versions.set(normalize(match[1]), match[2]);
 	}
-	return names;
+	return versions;
 }
 
 let failed = false;
@@ -50,10 +57,23 @@ for (const [inPath, lockPath] of pairs) {
 		failed = true;
 		continue;
 	}
-	const locked = lockedNames(readFileSync(absLock, "utf-8"));
-	const missing = requirementNames(readFileSync(absIn, "utf-8")).filter((name) => !locked.has(name));
+	const locked = lockedVersions(readFileSync(absLock, "utf-8"));
+	const missing = [];
+	const drifted = [];
+	for (const { name, pin } of requirements(readFileSync(absIn, "utf-8"))) {
+		if (!locked.has(name)) {
+			missing.push(name);
+		} else if (pin !== null && locked.get(name) !== pin) {
+			drifted.push(`${name}==${pin} (lock has ${locked.get(name)})`);
+		}
+	}
 	if (missing.length > 0) {
 		console.error(`${lockPath} does not lock: ${missing.join(", ")}`);
+		console.error("  Recompile it with the command recorded on its first line.");
+		failed = true;
+	}
+	if (drifted.length > 0) {
+		console.error(`${lockPath} pins the wrong version: ${drifted.join(", ")}`);
 		console.error("  Recompile it with the command recorded on its first line.");
 		failed = true;
 	}

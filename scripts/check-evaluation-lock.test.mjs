@@ -8,7 +8,7 @@ import test from "node:test";
 const script = resolve(import.meta.dirname, "check-evaluation-lock.mjs");
 
 // The check reads four fixed paths, so every case writes all four and overrides the one it
-// is about. Contents are minimal: the check only compares names, not versions or hashes.
+// is about. Contents are minimal: names and exact `==` pins are what the check compares.
 const COMPLETE = {
 	evaluationIn: "pydantic>=2.0.0\npyyaml>=6.0.0\n",
 	evaluationLock: "pydantic==2.0.0 \\\n    --hash=sha256:aa\npyyaml==6.0.3 \\\n    --hash=sha256:bb\n",
@@ -73,6 +73,22 @@ test("reports a missing lock file instead of passing", () => {
 		const result = run(repo);
 		assert.equal(result.status, 1);
 		assert.match(result.stderr, /is missing/);
+	} finally {
+		rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("fails when the lock pins a different version than requirements.in", () => {
+	// A bump in requirements.in without a recompile keeps the name check green while the
+	// runtime installs the old version: the same gap as a missing pin (#163).
+	const repo = makeRepo({
+		evaluationIn: "pydantic==2.13.3\npyyaml>=6.0.0\n",
+		evaluationLock: "pydantic==2.0.0 \\\n    --hash=sha256:aa\npyyaml==6.0.3 \\\n    --hash=sha256:bb\n",
+	});
+	try {
+		const result = run(repo);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /wrong version: pydantic==2\.13\.3 \(lock has 2\.0\.0\)/);
 	} finally {
 		rmSync(repo, { recursive: true, force: true });
 	}
