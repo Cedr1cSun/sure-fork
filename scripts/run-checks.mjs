@@ -17,6 +17,8 @@ const checks = [
 	["npm", ["run", "test:repository-hygiene"]],
 	["npm", ["run", "test:sure-doctor"]],
 	["npm", ["run", "check:pinned-deps"]],
+	["npm", ["run", "check:evaluation-lock"]],
+	["npm", ["run", "test:evaluation-lock"]],
 	["npm", ["run", "check:ts-imports"]],
 	["npm", ["run", "check:sure-hooks"]],
 	["tsgo", ["--noEmit"]],

@@ -25,6 +25,8 @@
 		"sure:site-info": "node --import tsx scripts/sure-site-info.ts",
 		"sure:site-check": "node --import tsx scripts/sure-site-check.ts",
 		"check:pinned-deps": "node scripts/check-pinned-deps.mjs",
+		"check:evaluation-lock": "node scripts/check-evaluation-lock.mjs",
+		"test:evaluation-lock": "node --test scripts/check-evaluation-lock.test.mjs",
 		"check:sure-hooks": "tsgo --noEmit -p tsconfig.sure-hooks.json",
 		"check:ts-imports": "node scripts/check-ts-relative-imports.mjs",
 		"sure:doctor": "node scripts/sure-doctor.mjs",
